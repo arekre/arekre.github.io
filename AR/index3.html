@@ -35,7 +35,6 @@
       z-index: 0;
     }
 
-    /* display: none ではなく visibility/opacity で制御してA-Frameの描画計算を壊さないように修正 */
     #ar-container {
       position: absolute;
       top: 0;
@@ -43,11 +42,6 @@
       width: 100%;
       height: 100%;
       z-index: 1;
-      visibility: hidden;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-    #ar-container.active {
       visibility: visible;
       opacity: 1;
     }
@@ -130,6 +124,7 @@
       transform: scale(0.95);
     }
 
+    /* スタートウェルカムモーダル（半透明背景でモデルが透けて見え、タップでカメラ起動） */
     #start-modal {
       position: absolute;
       top: 0;
@@ -137,14 +132,15 @@
       width: 100%;
       height: 100%;
       z-index: 100;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(2px);
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 20px;
     }
     .start-card {
-      background: #fff;
+      background: rgba(255, 255, 255, 0.92);
       border-radius: 24px;
       padding: 28px 24px;
       max-width: 360px;
@@ -266,6 +262,7 @@
 </head>
 
 <body>
+  <!-- 背景用カメラビデオ -->
   <video id="ar-bg-video" autoplay playsinline muted></video>
 
   <div id="score-badge">0/3</div>
@@ -277,21 +274,28 @@
     </div>
   </div>
 
+  <!-- スタートモーダル -->
   <div id="start-modal">
     <div class="start-card">
       <h2>ウツボ公園へ ようこそ！</h2>
       <p>
         街のまん中にあるこの公園には、千株もの美しいバラを守る『バラの妖精族 ロサ』が住んでいます。<br/>
-        魔法のレンズを手に入れたあなたは、妖精ローザに話しかけられます。
+        カメラを地面に向けて「tap」を押すと、目の前にローザが現れます。
       </p>
       <button id="start-btn" class="btn-fairy px-5 py-2">tap</button>
     </div>
   </div>
 
-  <!-- A-Frame 空間 -->
+  <!-- A-Frame AR 空間 -->
   <div id="ar-container">
     <a-scene embedded vr-mode-ui="enabled: false" cursor="rayOrigin: mouse" raycaster="objects: .clickable">
-      <a-entity id="main-camera" camera look-controls="pointerLockEnabled: false; touchEnabled: true;" position="0 1.6 0"></a-entity>
+      <a-entity id="main-camera" camera look-controls="pointerLockEnabled: false; touchEnabled: true;" position="0 1.6 0">
+        <!-- 画面中央からのレイキャスト（地面判定用） -->
+        <a-entity id="raycaster" raycaster="objects: #ground-plane; far: 20;" position="0 0 0"></a-entity>
+      </a-entity>
+
+      <!-- 仮想地面（目に見えない平面 collider） -->
+      <a-plane id="ground-plane" position="0 0 0" rotation="-90 0 0" width="100" height="100" visible="false"></a-plane>
 
       <a-assets>
         <a-asset-item id="fairy-glb" src="roza.glb"></a-asset-item>
@@ -300,7 +304,8 @@
       <a-light type="ambient" intensity="1.5"></a-light>
       <a-light type="directional" position="1 3 2" intensity="1.0"></a-light>
 
-      <a-entity id="rosa-wrapper" position="0 1.2 -2.0" visible="false">
+      <!-- ローザ（初期状態から可視化して地面追従） -->
+      <a-entity id="rosa-wrapper" position="0 0 -2.0" visible="true">
         <a-entity id="rosa-model" class="clickable" animation-mixer="clip: *; loop: repeat; timeScale: 1;"></a-entity>
       </a-entity>
     </a-scene>
@@ -336,16 +341,16 @@
   <canvas id="photo-canvas" style="display: none;"></canvas>
 
   <script>
-    const BASE_SCALE = 1.5; // 初期スケールを使いやすいサイズに設定
+    const BASE_SCALE = 1.5;
     const USE_GLB_MODEL = true;
 
     let currentPhase = 0;
     let isTransitioning = false;
+    let isGroundTracking = true; // スタート前は地面追従モード
     let bgStream = null;
     let frontStream = null;
 
     let audioCtx = null;
-    let bgmOscillator = null;
 
     function initAudioContext() {
       if (!audioCtx) {
@@ -433,6 +438,8 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       initRosaCharacter();
+      startBackgroundCamera(); // ページ読み込みと同時に背景カメラ起動
+      initGroundTracking();   // 地面検知・追従の初期化
     });
 
     function initRosaCharacter() {
@@ -440,11 +447,7 @@
 
       if (USE_GLB_MODEL) {
         rosaModel.setAttribute('gltf-model', '#fairy-glb');
-        rosaModel.addEventListener('model-loaded', () => {
-          console.log('roza.glb の読み込みに成功しました！');
-        });
-        rosaModel.addEventListener('model-error', (e) => {
-          console.warn('[Model Fallback] roza.glbの読み込みに失敗したため標準図形を生成します。', e);
+        rosaModel.addEventListener('model-error', () => {
           buildFallbackShape();
         });
       } else {
@@ -461,6 +464,26 @@
         <a-cone radius-bottom="0.08" radius-top="0" height="0.2" color="#ffff99" position="-0.15 0.3 0" rotation="0 0 45"></a-cone>
         <a-cone radius-bottom="0.08" radius-top="0" height="0.2" color="#ffff99" position="0.15 0.3 0" rotation="0 0 -45"></a-cone>
       `;
+    }
+
+    /* 地面判定とリアルタイム追従（Hit Test Simulation） */
+    function initGroundTracking() {
+      const raycasterEl = document.getElementById('raycaster');
+      const groundPlane = document.getElementById('ground-plane');
+
+      setInterval(() => {
+        if (!isGroundTracking) return;
+
+        const raycaster = raycasterEl.components.raycaster;
+        if (raycaster) {
+          const intersections = raycaster.getIntersection(groundPlane);
+          if (intersections) {
+            // カメラが捉えた地面上の交点座標へ移動
+            const point = intersections.point;
+            rosaWrapper.setAttribute('position', `${point.x.toFixed(2)} 0 ${point.z.toFixed(2)}`);
+          }
+        }
+      }, 50); // 20fpsで更新
     }
 
     function setGLBModelOpacity(entityEl, opacity) {
@@ -515,19 +538,10 @@
         }
       }
 
+      // 地面自動追従を解除し、現在の位置に接地固定する
+      isGroundTracking = false;
       startModal.style.display = 'none';
-      const success = await startBackgroundCamera();
-      if (success) {
-        // visibilityアクティブ化でA-Frameキャンバスの再計算を強制起動
-        arContainer.classList.add('active');
-        const sceneEl = document.querySelector('a-scene');
-        if (sceneEl && sceneEl.resize) {
-          sceneEl.resize();
-        }
-        
-        rosaWrapper.setAttribute('visible', true);
-        startPrologue();
-      }
+      startPrologue();
     });
 
     async function startBackgroundCamera() {
@@ -586,8 +600,7 @@
       isTransitioning = false;
       stopBobbing();
 
-      // 初期位置をカメラの正面（見つけやすい位置）に設定
-      rosaWrapper.setAttribute('position', '0 1.2 -2.0');
+      rosaWrapper.setAttribute('position', '0 0 -2.0');
       rosaWrapper.setAttribute('rotation', '0 0 0');
       rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
       setGLBModelOpacity(rosaModel, 1.0);
@@ -599,7 +612,7 @@
       isTransitioning = false;
       stopBobbing();
 
-      rosaWrapper.setAttribute('position', '1.5 1.8 -2.0');
+      rosaWrapper.setAttribute('position', '1.5 1.5 -2.0');
       rosaWrapper.setAttribute('rotation', '0 -30 0');
       
       const smallScale = BASE_SCALE * 0.5;
@@ -613,7 +626,7 @@
       isTransitioning = false;
       stopBobbing();
 
-      rosaWrapper.setAttribute('position', '-0.8 0.8 -1.5');
+      rosaWrapper.setAttribute('position', '-0.8 0.2 -1.5');
       rosaWrapper.setAttribute('rotation', '0 20 0');
       rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
       setGLBModelOpacity(rosaModel, 0.4);
@@ -676,7 +689,7 @@
         setTimeout(() => {
           dialogContainer.style.display = 'none';
           scoreBadge.style.display = 'none';
-          arContainer.classList.remove('active');
+          arContainer.style.display = 'none';
           openPhotoScreen();
         }, 3500);
       }
@@ -756,11 +769,13 @@
 
       currentPhase = 0;
       isTransitioning = false;
+      isGroundTracking = true;
 
-      rosaWrapper.setAttribute('visible', false);
+      rosaWrapper.setAttribute('visible', true);
       stopBobbing();
 
       startModal.style.display = 'flex';
+      startBackgroundCamera();
     });
   </script>
 </body>
