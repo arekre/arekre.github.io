@@ -275,6 +275,7 @@
       <a-entity id="main-camera" camera look-controls="pointerLockEnabled: false" position="0 1.6 0"></a-entity>
 
       <a-assets>
+        <!-- demo.glb から roza.glb に修正 -->
         <a-asset-item id="fairy-glb" src="roza.glb"></a-asset-item>
       </a-assets>
 
@@ -317,8 +318,6 @@
      * ============================================================ */
     const BASE_SCALE = 2.0;
 
-    // 外部GLBモデルを読み込むか、A-Frame標準図形を使用するかの切替フラグ
-    // falseに設定すると、demo.glbが存在しない環境でもカプセル・球体でテスト可能です
     const USE_GLB_MODEL = true;
 
     // ゲーム進行状態
@@ -355,7 +354,7 @@
         rosaModel.setAttribute('gltf-model', '#fairy-glb');
         // 読込失敗時のフォールバック処理
         rosaModel.addEventListener('model-error', () => {
-          console.warn('[Model Fallback] demo.glbの読み込みに失敗したため標準図形を生成します。');
+          console.warn('[Model Fallback] roza.glbの読み込みに失敗したため標準図形を生成します。');
           buildFallbackShape();
         });
       } else {
@@ -388,7 +387,6 @@
           }
         });
       }
-      // 標準図形配下のマテリアルにも念のため同期
       const children = entityEl.querySelectorAll('a-sphere, a-capsule, a-cone');
       children.forEach((el) => {
         el.setAttribute('material', `opacity: ${opacity}; transparent: true`);
@@ -429,14 +427,12 @@
     /* ============================================================
      * 会話・ゲーム進行フロー
      * ============================================================ */
-    // 0. スタートボタン押下
     startBtn.addEventListener('click', () => {
       startModal.style.display = 'none';
       initRosaCharacter();
       startPrologue();
     });
 
-    // 1. プロローグ開始
     function startPrologue() {
       startBobbing();
       dialogContainer.style.display = 'block';
@@ -447,7 +443,6 @@
         dialogBtn.style.display = 'none';
         dialogText.textContent = '「私がみえるの！？このカメラ越しだったらみえるのね！せっかくだし少し遊ぼうよ！今からあなたの周りに隠れるからカメラを動かして、探してみて！」';
         
-        // 2.5秒後に自動でフェーズ1へ
         setTimeout(() => {
           dialogContainer.style.display = 'none';
           scoreBadge.style.display = 'block';
@@ -457,13 +452,11 @@
       };
     }
 
-    // フェーズ1：背中を向けて隠れる
     function startPhase1() {
       currentPhase = 1;
       isTransitioning = false;
       stopBobbing();
 
-      // (random, 0, random) の配置
       const randomX = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 1.0);
       const randomZ = -(1.5 + Math.random() * 1.5);
       rosaWrapper.setAttribute('position', `${randomX.toFixed(2)} 0 ${randomZ.toFixed(2)}`);
@@ -473,7 +466,6 @@
       rosaWrapper.setAttribute('visible', true);
     }
 
-    // フェーズ2：高所に縮小して出現
     function startPhase2() {
       currentPhase = 2;
       isTransitioning = false;
@@ -488,7 +480,6 @@
       rosaWrapper.setAttribute('visible', true);
     }
 
-    // フェーズ3：透明度低下
     function startPhase3() {
       currentPhase = 3;
       isTransitioning = false;
@@ -511,7 +502,6 @@
         isTransitioning = true;
         showDialogTemporary('「きゃっ！見つかっちゃった！でもまだまだだ～！」');
 
-        // クルッと1回転して消失
         rosaWrapper.setAttribute('animation__spin', {
           property: 'rotation',
           to: '0 540 0',
@@ -533,7 +523,6 @@
         isTransitioning = true;
         showDialogTemporary('「あれれ、すごいじゃん！でも次は絶対無理だよ！」');
 
-        // 発光・フェードアウト演出（透明度を段階的に下げる）
         let fadeCount = 10;
         const fadeInterval = setInterval(() => {
           fadeCount--;
@@ -552,12 +541,11 @@
       } else if (currentPhase === 3) {
         isTransitioning = true;
         scoreBadge.textContent = '3/3';
-        setGLBModelOpacity(rosaModel, 1.0); // 姿をはっきり戻す
-        startBobbing(); // 歓喜の揺れアニメーション再開
+        setGLBModelOpacity(rosaModel, 1.0);
+        startBobbing();
 
         showDialogTemporary('「降参～！君すごいね！見つかっちゃったなー、でもとってもたのしかったから、特別なプレゼント！記念写真を撮ろー！」');
 
-        // 3.5秒後にフォトフレーム画面へ遷移
         setTimeout(() => {
           dialogContainer.style.display = 'none';
           scoreBadge.style.display = 'none';
@@ -590,7 +578,6 @@
       }
     }
 
-    // シャッターボタン押下時の合成処理
     shutterBtn.addEventListener('click', () => {
       const vWidth = cameraFeed.videoWidth || 1080;
       const vHeight = cameraFeed.videoHeight || 1920;
@@ -599,19 +586,16 @@
       photoCanvas.height = vHeight;
       const ctx = photoCanvas.getContext('2d');
 
-      // 1. カメラ映像をミラー描画
       ctx.save();
       ctx.translate(vWidth, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(cameraFeed, 0, 0, vWidth, vHeight);
       ctx.restore();
 
-      // 2. フォトフレーム画像を重ねて描画
       if (frameOverlay.complete && frameOverlay.naturalWidth !== 0) {
         ctx.drawImage(frameOverlay, 0, 0, vWidth, vHeight);
       }
 
-      // 3. 生成画像をモーダルに表示
       const dataUrl = photoCanvas.toDataURL('image/png');
       capturedImage.src = dataUrl;
       previewModal.style.display = 'flex';
