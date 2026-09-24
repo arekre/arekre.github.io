@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ウツボ公園イベント - バラの妖精ローザのかくれんぼ</title>
+
+  <!-- A-Frame (v1.4.2) -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <!-- MindAR A-Frame 統合版ライブラリ -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+  <!-- A-Frame Extras (GLTFアニメーション再生用) -->
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
+
+  <style>
+    /* 全体設定 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      background-color: #000;
+    }
+
+    #ar-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+
+    /* UI elements */
+    #score-badge {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(4px);
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #e6005c;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: none;
+    }
+
+    #dialog-container {
+      position: absolute;
+      bottom: 24px;
+      left: 5%;
+      width: 90%;
+      max-width: 480px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.95);
+      border: 2px solid #ffccd5;
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      display: none;
+      box-sizing: border-box;
+    }
+
+    #dialog-text {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: #333;
+      margin-bottom: 12px;
+      min-height: 48px;
+    }
+
+    .btn-fairy {
+      background: linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%);
+      color: #fff;
+      border: none;
+      border-radius: 25px;
+      padding: 10px 24px;
+      font-size: 0.95rem;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(255, 117, 140, 0.4);
+      cursor: pointer;
+      outline: none;
+    }
+    .btn-fairy:active {
+      transform: scale(0.96);
+    }
+
+    #start-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .start-card {
+      background: #fff;
+      border-radius: 24px;
+      padding: 28px 24px;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    }
+
+    .start-card h2 {
+      font-size: 1.3rem;
+      font-weight: bold;
+      color: #d63384;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+
+    .start-card p {
+      font-size: 0.88rem;
+      line-height: 1.6;
+      color: #555;
+      margin-bottom: 24px;
+    }
+
+    #photo-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 50;
+      background: #000;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .camera-wrapper {
+      position: relative;
+      width: 100%;
+      height: calc(100% - 100px);
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #camera-feed {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .mirror-mode {
+      transform: scaleX(-1);
+    }
+
+    #frame-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .camera-controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+    }
+
+    .btn-switch-cam {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid #fff;
+      color: #fff;
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      backdrop-filter: blur(4px);
+    }
+
+    .shutter-panel {
+      height: 100px;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .btn-shutter {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      border: 4px solid #fff;
+      background: #ff4d88;
+      box-shadow: 0 0 12px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+
+    #preview-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.92);
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+
+    #captured-image {
+      max-width: 85%;
+      max-height: 60%;
+      border-radius: 12px;
+      border: 2px solid #fff;
+      margin-bottom: 16px;
+    }
+
+    .save-notice {
+      color: #fff;
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn-secondary-custom {
+      background: transparent;
+      color: #fff;
+      border: 1px solid #fff;
+      border-radius: 25px;
+      padding: 10px 20px;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- UI: スタートモーダル -->
+  <div id="start-modal">
+    <div class="start-card">
+      <h2>ウツボ公園へ ようこそ！</h2>
+      <p>
+        バラの妖精ローザが公園の中にかくれんぼしているよ！<br/>
+        缶バッチにカメラをかざして妖精を探してみよう。
+      </p>
+      <button id="start-btn" class="btn-fairy">ARかくれんぼをはじめる</button>
+    </div>
+  </div>
+
+  <!-- UI: かくれんぼスコア & 対話ダイアログ -->
+  <div id="score-badge">見つけた: 0/3</div>
+
+  <div id="dialog-container">
+    <div id="dialog-text"></div>
+    <div style="text-align: right;">
+      <button id="dialog-btn" class="btn-fairy" style="padding: 6px 16px; font-size: 0.85rem;">つぎへ</button>
+    </div>
+  </div>
+
+  <!-- 3D ARシーン -->
+  <div id="ar-container">
+    <a-scene 
+      mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiLoading: no; uiScanning: no;" 
+      embedded 
+      color-space="sRGB" 
+      renderer="colorManagement: true; physicallyCorrectLights: true; exposure: 1.0; transparent: true;" 
+      vr-mode-ui="enabled: false" 
+      cursor="rayOrigin: mouse" 
+      raycaster="objects: .clickable">
+
+      <a-assets>
+        <a-asset-item id="rosa-glb" src="roza.glb"></a-asset-item>
+      </a-assets>
+
+      <!-- カメラ設定 (カメラ直下に配下オブジェクトを配置可能にする) -->
+      <a-camera id="main-camera" position="0 0 0" look-controls="enabled: false">
+        <!-- かくれんぼ時用：カメラの子要素として配置（視界内に確実に表示させる） -->
+        <a-entity id="rosa-wrapper" position="0 0 -2" visible="false">
+          <a-entity id="rosa-model" class="clickable" animation-mixer="clip: *; loop: repeat;"></a-entity>
+        </a-entity>
+      </a-camera>
+
+      <!-- ライティング -->
+      <a-light type="ambient" color="#ffffff" intensity="1.2"></a-light>
+      <a-light type="directional" color="#fff5ea" intensity="1.5" position="1 3 2"></a-light>
+
+      <!-- マーカー認識対象 (targetIndex: 0) -->
+      <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
+        <a-plane id="aura-effect" position="0 0 0" rotation="0 0 0" width="1.2" height="1.2" 
+                 material="color: #ffb3c6; transparent: true; opacity: 0.0;" 
+                 animation="property: rotation; to: 0 0 360; dur: 8000; easing: linear; loop: true;"></a-plane>
+
+        <a-entity id="particle-container"></a-entity>
+      </a-entity>
+    </a-scene>
+  </div>
+
+  <!-- UI: 記念撮影画面 -->
+  <div id="photo-screen">
+    <div class="camera-controls">
+      <button id="switch-cam-btn" class="btn-switch-cam">📷 カメラ切替</button>
+    </div>
+    <div class="camera-wrapper">
+      <video id="camera-feed" autoplay playsinline muted class="mirror-mode"></video>
+      <img id="frame-overlay" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'></svg>" alt="frame" />
+    </div>
+    <div class="shutter-panel">
+      <button id="shutter-btn" class="btn-shutter"></button>
+    </div>
+  </div>
+
+  <!-- UI: プレビューモーダル -->
+  <div id="preview-modal">
+    <img id="captured-image" alt="Captured Photo" />
+    <div class="save-notice">✨ 写真を長押しして保存してね！</div>
+    <div class="btn-group">
+      <button id="close-preview-btn" class="btn-secondary-custom">もう一度撮る</button>
+      <button id="restart-game-btn" class="btn-fairy">最初からあそぶ</button>
+    </div>
+  </div>
+
+  <canvas id="photo-canvas" style="display: none;"></canvas>
+
+  <script>
+    /* =========================================================
+       1. 音響効果（Web Audio API）
+       ========================================================= */
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTapSE() {
+      initAudio();
+      if (!audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function playFoundSE() {
+      initAudio();
+      if (!audioCtx) return;
+      try {
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          const startTime = audioCtx.currentTime + idx * 0.08;
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, startTime);
+          gain.gain.setValueAtTime(0.2, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + 0.2);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    /* =========================================================
+       2. 変数定義とDOM要素取得
+       ========================================================= */
+    const BASE_SCALE = 1.0;
+    let currentPhase = 0;
+    let particleInterval = null;
+    let currentFacingMode = 'user';
+    let photoStream = null;
+
+    const startModal = document.getElementById('start-modal');
+    const startBtn = document.getElementById('start-btn');
+    const dialogContainer = document.getElementById('dialog-container');
+    const dialogText = document.getElementById('dialog-text');
+    const dialogBtn = document.getElementById('dialog-btn');
+    const scoreBadge = document.getElementById('score-badge');
+    const targetAnchor = document.getElementById('target-anchor');
+    const particleContainer = document.getElementById('particle-container');
+    const auraEffect = document.getElementById('aura-effect');
+    const rosaWrapper = document.getElementById('rosa-wrapper');
+    const rosaModel = document.getElementById('rosa-model');
+    const photoScreen = document.getElementById('photo-screen');
+    const cameraFeed = document.getElementById('camera-feed');
+    const switchCamBtn = document.getElementById('switch-cam-btn');
+    const shutterBtn = document.getElementById('shutter-btn');
+    const previewModal = document.getElementById('preview-modal');
+    const capturedImage = document.getElementById('captured-image');
+    const closePreviewBtn = document.getElementById('close-preview-btn');
+    const restartGameBtn = document.getElementById('restart-game-btn');
+    const photoCanvas = document.getElementById('photo-canvas');
+
+    /* =========================================================
+       3. 初期化＆MindAR・モデルの設定
+       ========================================================= */
+    window.addEventListener('DOMContentLoaded', () => {
+      rosaModel.setAttribute('gltf-model', '#rosa-glb');
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+
+      rosaModel.addEventListener('model-error', () => {
+        console.warn('roza.glb の読み込みに失敗したため代用図形を表示します。');
+        rosaModel.removeAttribute('gltf-model');
+        rosaModel.innerHTML = '<a-sphere radius="0.3" color="#ff758c"></a-sphere>';
+      });
+
+      targetAnchor.addEventListener('targetFound', () => {
+        playFoundSE();
+        auraEffect.setAttribute('material', 'opacity', 0.6);
+        startPetalParticles();
+      });
+
+      targetAnchor.addEventListener('targetLost', () => {
+        auraEffect.setAttribute('material', 'opacity', 0.0);
+        stopPetalParticles();
+      });
+    });
+
+    window.addEventListener('pointerdown', (e) => {
+      if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+      playTapSE();
+    });
+
+    /* =========================================================
+       4. パーティクル制御
+       ========================================================= */
+    function startPetalParticles() {
+      if (particleInterval) return;
+      particleInterval = setInterval(() => {
+        spawnSinglePetal();
+      }, 500);
+    }
+
+    function stopPetalParticles() {
+      if (particleInterval) {
+        clearInterval(particleInterval);
+        particleInterval = null;
+      }
+    }
+
+    function spawnSinglePetal() {
+      const petal = document.createElement('a-plane');
+      const startX = (Math.random() - 0.5) * 0.8;
+      const startY = (Math.random() - 0.5) * 0.8;
+      const startZ = 0;
+
+      petal.setAttribute('width', '0.08');
+      petal.setAttribute('height', '0.08');
+      petal.setAttribute('position', `${startX} ${startY} ${startZ}`);
+      petal.setAttribute('material', 'color: #ff2a6d; transparent: true; opacity: 0.9; side: double;');
+
+      const endY = startY + 0.8 + Math.random() * 0.5;
+      const endRotZ = Math.random() * 360;
+
+      petal.setAttribute('animation__move', {
+        property: 'position',
+        to: `${startX} ${endY} ${startZ + 0.2}`,
+        dur: 2000,
+        easing: 'easeOutQuad'
+      });
+
+      petal.setAttribute('animation__fade', {
+        property: 'material.opacity',
+        to: '0',
+        dur: 2000,
+        easing: 'easeOutQuad'
+      });
+
+      petal.setAttribute('animation__rotate', {
+        property: 'rotation',
+        to: `0 0 ${endRotZ}`,
+        dur: 2000,
+        easing: 'linear'
+      });
+
+      particleContainer.appendChild(petal);
+
+      setTimeout(() => {
+        if (petal.parentNode) {
+          petal.parentNode.removeChild(petal);
+        }
+      }, 2100);
+    }
+
+    /* =========================================================
+       5. ゲーム進行フロー
+       ========================================================= */
+    startBtn.addEventListener('click', () => {
+      initAudio();
+      startModal.style.display = 'none';
+
+      const sceneEl = document.querySelector('a-scene');
+      const arSystem = sceneEl.systems["mindar-image-system"];
+      if (arSystem) {
+        arSystem.start();
+      }
+
+      startPrologue();
+    });
+
+    function startPrologue() {
+      dialogContainer.style.display = 'block';
+      dialogText.textContent = '「こんにちは！わたしはバラの妖精ローザ。公園の中に隠れるから見つけてね！」';
+      
+      dialogBtn.onclick = () => {
+        playTapSE();
+        dialogContainer.style.display = 'none';
+        scoreBadge.style.display = 'block';
+        scoreBadge.textContent = '見つけた: 0/3';
+        startPhase1();
+      };
+    }
+
+    function setRandomPosition(entity, minDist, maxDist) {
+      const x = (Math.random() - 0.5) * 1.5;
+      const y = (Math.random() - 0.5) * 0.8;
+      const z = -(Math.random() * (maxDist - minDist) + minDist);
+      entity.setAttribute('position', `${x} ${y} ${z}`);
+    }
+
+    function startPhase1() {
+      currentPhase = 1;
+      rosaWrapper.setAttribute('position', '0 0 -2.0');
+      rosaWrapper.setAttribute('rotation', '0 0 0');
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    function startPhase2() {
+      currentPhase = 2;
+      setRandomPosition(rosaWrapper, 1.8, 2.5);
+      
+      rosaWrapper.setAttribute('animation__spin', {
+        property: 'rotation',
+        from: '0 0 0',
+        to: '0 360 0',
+        dur: 1000,
+        easing: 'easeOutBack'
+      });
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    function startPhase3() {
+      currentPhase = 3;
+      setRandomPosition(rosaWrapper, 2.5, 3.2);
+      const smallScale = BASE_SCALE * 0.6;
+      rosaModel.setAttribute('scale', `${smallScale} ${smallScale} ${smallScale}`);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    rosaModel.addEventListener('click', () => {
+      playFoundSE();
+
+      if (currentPhase === 1) {
+        scoreBadge.textContent = '見つけた: 1/3';
+        rosaWrapper.setAttribute('visible', false);
+        showTemporaryDialog('「みつかっちゃった！次はもっと上手に隠れるぞ〜」', () => {
+          startPhase2();
+        });
+      } else if (currentPhase === 2) {
+        scoreBadge.textContent = '見つけた: 2/3';
+        rosaWrapper.setAttribute('visible', false);
+        showTemporaryDialog('「すごい！よく見つけたね！最後は本気出すよ！」', () => {
+          startPhase3();
+        });
+      } else if (currentPhase === 3) {
+        scoreBadge.textContent = '見つけた: 3/3';
+        rosaWrapper.setAttribute('visible', false);
+        scoreBadge.style.display = 'none';
+
+        showTemporaryDialog('「ぜんぶ見つけられちゃった！楽しかった〜！記念に一緒に写真を撮ろう！」', () => {
+          switchToPhotoCameraMode();
+        });
+      }
+    });
+
+    function showTemporaryDialog(text, callback) {
+      dialogText.textContent = text;
+      dialogContainer.style.display = 'block';
+      dialogBtn.onclick = () => {
+        playTapSE();
+        dialogContainer.style.display = 'none';
+        if (callback) callback();
+      };
+    }
+
+    /* =========================================================
+       6. イン/アウトカメラ切り替え・撮影（iOS安全対策追加）
+       ========================================================= */
+    async function switchToPhotoCameraMode() {
+      const sceneEl = document.querySelector('a-scene');
+      if (sceneEl && sceneEl.systems["mindar-image-system"]) {
+        try {
+          sceneEl.systems["mindar-image-system"].stop();
+        } catch(e) {
+          console.log("MindAR stop:", e);
+        }
+      }
+
+      document.getElementById('ar-container').style.display = 'none';
+      photoScreen.style.display = 'flex';
+
+      currentFacingMode = 'user';
+      await startNativeCamera(currentFacingMode);
+    }
+
+    async function startNativeCamera(facingMode) {
+      if (photoStream) {
+        photoStream.getTracks().forEach(track => track.stop());
+      }
+
+      try {
+        photoStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode },
+          audio: false
+        });
+        cameraFeed.srcObject = photoStream;
+
+        // iOS対策: 明示的に play() を呼び出す
+        await cameraFeed.play();
+
+        if (facingMode === 'user') {
+          cameraFeed.classList.add('mirror-mode');
+        } else {
+          cameraFeed.classList.remove('mirror-mode');
+        }
+      } catch (err) {
+        alert("カメラの起動に失敗しました: " + err.message);
+      }
+    }
+
+    switchCamBtn.addEventListener('click', async () => {
+      playTapSE();
+      currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+      await startNativeCamera(currentFacingMode);
+    });
+
+    shutterBtn.addEventListener('click', () => {
+      playFoundSE();
+
+      const vWidth = cameraFeed.videoWidth || 1080;
+      const vHeight = cameraFeed.videoHeight || 1920;
+
+      photoCanvas.width = vWidth;
+      photoCanvas.height = vHeight;
+      const ctx = photoCanvas.getContext('2d');
+
+      ctx.save();
+      if (currentFacingMode === 'user') {
+        ctx.translate(vWidth, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(cameraFeed, 0, 0, vWidth, vHeight);
+      ctx.restore();
+
+      const frameImg = document.getElementById('frame-overlay');
+      // フレーム画像が実際に読み込まれている場合のみ描画
+      if (frameImg && frameImg.complete && frameImg.naturalWidth > 10) {
+        ctx.drawImage(frameImg, 0, 0, vWidth, vHeight);
+      }
+
+      const dataUrl = photoCanvas.toDataURL('image/png');
+      capturedImage.src = dataUrl;
+      previewModal.style.display = 'flex';
+    });
+
+    closePreviewBtn.addEventListener('click', () => {
+      playTapSE();
+      previewModal.style.display = 'none';
+    });
+
+    restartGameBtn.addEventListener('click', () => {
+      playTapSE();
+      location.reload();
+    });
+  </script>
+</body>
+</html>
