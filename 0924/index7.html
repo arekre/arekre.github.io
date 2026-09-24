@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ARで公園イベント - バラの妖精ローザのかくれんぼ</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- A-Frame (v1.4.2) -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <!-- A-Frame Extras -->
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
+  <!-- MindAR A-Frame Integration -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'BIZ UDPGothic', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      background-color: #000;
+    }
+
+    #ar-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    #ar-container.active {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    a-scene {
+      background: transparent !important;
+    }
+
+    .tap-ripple {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border: 3px solid #ff4d88;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0.5);
+      animation: ripple-anim 0.6s ease-out forwards;
+      z-index: 999;
+    }
+    @keyframes ripple-anim {
+      0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+    }
+
+    #score-badge {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(4px);
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-size: 1.25rem;
+      font-weight: bold;
+      color: #d63384;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: none;
+    }
+
+    #dialog-container {
+      position: absolute;
+      bottom: 24px;
+      left: 5%;
+      width: 90%;
+      max-width: 480px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.95);
+      border: 2px solid #f8d7da;
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      display: none;
+      animation: fadeInUp 0.4s ease;
+    }
+    @keyframes fadeInUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    #dialog-text {
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: #333;
+      margin-bottom: 12px;
+      min-height: 48px;
+    }
+
+    .btn-fairy {
+      background: linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%);
+      color: #fff;
+      border: none;
+      border-radius: 25px;
+      padding: 10px 24px;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(255, 117, 140, 0.4);
+      transition: all 0.2s ease;
+    }
+    .btn-fairy:active {
+      transform: scale(0.95);
+    }
+
+    #start-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .start-card {
+      background: #fff;
+      border-radius: 24px;
+      padding: 28px 24px;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    }
+    .start-card h2 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #d63384;
+      margin-bottom: 16px;
+    }
+    .start-card p {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: #555;
+      margin-bottom: 24px;
+    }
+
+    #photo-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 50;
+      background: #000;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .camera-wrapper {
+      position: relative;
+      width: 100%;
+      height: calc(100% - 100px);
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #camera-feed {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    #frame-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .shutter-panel {
+      height: 100px;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .btn-shutter {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      border: 4px solid #fff;
+      background: #ff4d88;
+      box-shadow: 0 0 12px rgba(0,0,0,0.5);
+    }
+
+    #preview-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.92);
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #captured-image {
+      max-width: 85%;
+      max-height: 65%;
+      border-radius: 12px;
+      border: 2px solid #fff;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      margin-bottom: 16px;
+    }
+    .save-notice {
+      color: #fff;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    #error-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 300;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- ※二重表示を防ぐため、HTML直接記述の背景videoタグは除去しMindARに一本化 -->
+
+  <div id="score-badge">0/3</div>
+
+  <div id="dialog-container">
+    <div id="dialog-text"></div>
+    <div class="text-end">
+      <button id="dialog-btn" class="btn btn-fairy btn-sm">タップして進む</button>
+    </div>
+  </div>
+
+  <div id="start-modal">
+    <div class="start-card">
+      <h2>ウツボ公園へ ようこそ！</h2>
+      <p>
+        街のまん中にあるこの公園には、千株もの美しいバラを守る『バラの妖精族 ロサ』が住んでいます。<br/>
+        魔法のレンズを手に入れたあなたは、妖精ローザに話しかけられます。
+      </p>
+      <button id="start-btn" class="btn-fairy px-5 py-2">tap</button>
+    </div>
+  </div>
+
+  <!-- A-Frame 空間 -->
+  <div id="ar-container">
+    <!-- autoStartをfalseにし、ボタン押下時に手動スタートさせることで安定化 -->
+    <a-scene id="ar-scene" mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiScanning: no;" embedded vr-mode-ui="enabled: false" cursor="rayOrigin: mouse" raycaster="objects: .clickable">
+      <a-entity id="main-camera" camera look-controls="pointerLockEnabled: false; touchEnabled: true;" position="0 1.6 0"></a-entity>
+
+      <a-assets>
+        <a-asset-item id="fairy-glb" src="roza.glb"></a-asset-item>
+      </a-assets>
+
+      <a-light type="ambient" intensity="1.5"></a-light>
+      <a-light type="directional" position="1 3 2" intensity="1.0"></a-light>
+
+      <!-- 既存キャラクター（ローザ）用エンティティ：完全維持 -->
+      <a-entity id="rosa-wrapper" position="0 1.2 -2.0" visible="false">
+        <a-entity id="rosa-model" class="clickable" animation-mixer="clip: *; loop: repeat; timeScale: 1;"></a-entity>
+      </a-entity>
+
+      <!-- 画像マーカー（targets.mind）追跡用のARアンカー -->
+      <a-entity id="rose-target" mindar-image-target="targetIndex: 0">
+        <a-entity id="rose-effect-group" visible="false">
+          <a-ring color="#ff758c" radius-inner="0.3" radius-outer="0.4" rotation="-90 0 0"
+                  animation="property: scale; to: 1.2 1.2 1.2; dir: alternate; dur: 1000; loop: true">
+          </a-ring>
+          
+          <a-circle color="#fff" radius="0.2" opacity="0.6" rotation="-90 0 0" position="0 0.05 0"
+                    animation="property: material.opacity; from: 0.6; to: 0.1; dir: alternate; dur: 800; loop: true">
+          </a-circle>
+
+          <a-sphere position="0 0.3 0" radius="0.08" color="#ffd700"
+                    animation="property: position; to: 0 0.5 0; dir: alternate; dur: 1200; loop: true"
+                    animation__glow="property: material.opacity; from: 0.9; to: 0.3; dir: alternate; dur: 1200; loop: true">
+          </a-sphere>
+        </a-entity>
+      </a-entity>
+
+    </a-scene>
+  </div>
+
+  <div id="photo-screen">
+    <div class="camera-wrapper">
+      <video id="camera-feed" autoplay playsinline muted></video>
+      <img id="frame-overlay" src="frame.svg" alt="frame" />
+    </div>
+    <div class="shutter-panel">
+      <button id="shutter-btn" class="btn-shutter"></button>
+    </div>
+  </div>
+
+  <div id="preview-modal">
+    <img id="captured-image" alt="Captured Photo" />
+    <div class="save-notice">✨ 写真を長押し（PCは右クリック）して保存してね！</div>
+    <div class="d-flex gap-2">
+      <button id="close-preview-btn" class="btn btn-outline-light rounded-pill px-4">撮影にもどる</button>
+      <button id="restart-game-btn" class="btn btn-fairy rounded-pill px-4">もう一度あそぶ</button>
+    </div>
+  </div>
+
+  <div id="error-modal">
+    <div class="start-card">
+      <h2 style="color: #dc3545;">カメラの起動エラー</h2>
+      <p id="error-text">カメラへのアクセスが許可されていません。</p>
+      <button onclick="location.reload()" class="btn btn-secondary rounded-pill px-4">再読み込み</button>
+    </div>
+  </div>
+
+  <canvas id="photo-canvas" style="display: none;"></canvas>
+
+  <script>
+    const BASE_SCALE = 1.5;
+    const USE_GLB_MODEL = true;
+
+    let currentPhase = 0;
+    let isTransitioning = false;
+    let frontStream = null;
+
+    let audioCtx = null;
+
+    function initAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTapSE() {
+      initAudioContext();
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.08);
+    }
+
+    function playFairyVoiceSE() {
+      initAudioContext();
+      if (!audioCtx) return;
+      const notes = [880, 1046.5, 1318.51, 1567.98];
+      notes.forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const startTime = audioCtx.currentTime + idx * 0.06;
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.25, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.12);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.12);
+      });
+    }
+
+    function playFoundSE() {
+      initAudioContext();
+      if (!audioCtx) return;
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const startTime = audioCtx.currentTime + idx * 0.09;
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.3, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.25);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.25);
+      });
+    }
+
+    const startModal = document.getElementById('start-modal');
+    const startBtn = document.getElementById('start-btn');
+    const dialogContainer = document.getElementById('dialog-container');
+    const dialogText = document.getElementById('dialog-text');
+    const dialogBtn = document.getElementById('dialog-btn');
+    const scoreBadge = document.getElementById('score-badge');
+    const rosaWrapper = document.getElementById('rosa-wrapper');
+    const rosaModel = document.getElementById('rosa-model');
+    const arContainer = document.getElementById('ar-container');
+    const photoScreen = document.getElementById('photo-screen');
+    const cameraFeed = document.getElementById('camera-feed');
+    const shutterBtn = document.getElementById('shutter-btn');
+    const previewModal = document.getElementById('preview-modal');
+    const capturedImage = document.getElementById('captured-image');
+    const closePreviewBtn = document.getElementById('close-preview-btn');
+    const restartGameBtn = document.getElementById('restart-game-btn');
+    const photoCanvas = document.getElementById('photo-canvas');
+    const frameOverlay = document.getElementById('frame-overlay');
+    const errorModal = document.getElementById('error-modal');
+    const errorText = document.getElementById('error-text');
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initRosaCharacter();
+      setupTargetEvents();
+    });
+
+    function setupTargetEvents() {
+      const roseTarget = document.getElementById('rose-target');
+      const roseEffectGroup = document.getElementById('rose-effect-group');
+
+      if (!roseTarget) return;
+
+      roseTarget.addEventListener('targetFound', () => {
+        console.log('[MindAR] Rose marker target found!');
+        if (roseEffectGroup) {
+          roseEffectGroup.setAttribute('visible', 'true');
+        }
+        playFoundSE();
+      });
+
+      roseTarget.addEventListener('targetLost', () => {
+        console.log('[MindAR] Rose marker target lost.');
+        if (roseEffectGroup) {
+          roseEffectGroup.setAttribute('visible', 'false');
+        }
+      });
+    }
+
+    function initRosaCharacter() {
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+
+      if (USE_GLB_MODEL) {
+        rosaModel.setAttribute('gltf-model', '#fairy-glb');
+        rosaModel.addEventListener('model-loaded', () => {
+          console.log('roza.glb の読み込みに成功しました！');
+        });
+        rosaModel.addEventListener('model-error', (e) => {
+          console.warn('[Model Fallback] roza.glbの読み込みに失敗したため標準図形を生成します。', e);
+          buildFallbackShape();
+        });
+      } else {
+        buildFallbackShape();
+      }
+    }
+
+    function buildFallbackShape() {
+      rosaModel.removeAttribute('gltf-model');
+      rosaModel.removeAttribute('animation-mixer');
+      rosaModel.innerHTML = `
+        <a-sphere radius="0.25" color="#ffb6c1" position="0 0.35 0"></a-sphere>
+        <a-capsule radius="0.18" height="0.4" color="#ff69b4" position="0 0 0"></a-capsule>
+        <a-cone radius-bottom="0.08" radius-top="0" height="0.2" color="#ffff99" position="-0.15 0.3 0" rotation="0 0 45"></a-cone>
+        <a-cone radius-bottom="0.08" radius-top="0" height="0.2" color="#ffff99" position="0.15 0.3 0" rotation="0 0 -45"></a-cone>
+      `;
+    }
+
+    function setGLBModelOpacity(entityEl, opacity) {
+      const mesh = entityEl.getObject3D('mesh');
+      if (mesh) {
+        mesh.traverse((node) => {
+          if (node.isMesh && node.material) {
+            node.material.transparent = true;
+            node.material.opacity = opacity;
+            node.material.needsUpdate = true;
+          }
+        });
+      }
+    }
+
+    function startBobbing() {
+      rosaModel.setAttribute('animation__bobbing', {
+        property: 'position',
+        dir: 'alternate',
+        dur: 1500,
+        easing: 'easeInOutSine',
+        loop: true,
+        to: '0 0.15 0'
+      });
+    }
+
+    function stopBobbing() {
+      rosaModel.removeAttribute('animation__bobbing');
+      rosaModel.setAttribute('position', '0 0 0');
+    }
+
+    window.addEventListener('pointerdown', (e) => {
+      playTapSE();
+      if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+
+      const ripple = document.createElement('div');
+      ripple.className = 'tap-ripple';
+      ripple.style.left = `${e.clientX}px`;
+      ripple.style.top = `${e.clientY}px`;
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 600);
+    });
+
+    startBtn.addEventListener('click', async () => {
+      initAudioContext();
+
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          await DeviceOrientationEvent.requestPermission();
+        } catch (e) {
+          console.warn("DeviceOrientation error:", e);
+        }
+      }
+
+      startModal.style.display = 'none';
+
+      try {
+        const sceneEl = document.querySelector('a-scene');
+        const arSystem = sceneEl.systems["mindar-image-system"];
+        
+        // MindARをスタート (重複カメラなしで背景を統合)
+        await arSystem.start();
+        
+        arContainer.classList.add('active');
+        if (sceneEl.resize) {
+          sceneEl.resize();
+        }
+
+        rosaWrapper.setAttribute('visible', true);
+        startPrologue();
+      } catch (err) {
+        console.error("MindAR起動エラー:", err);
+        showError("カメラの起動に失敗しました。カメラのアクセス許可を確認してください。");
+      }
+    });
+
+    function showError(msg) {
+      errorText.textContent = msg;
+      errorModal.style.display = 'flex';
+    }
+
+    function startPrologue() {
+      startBobbing();
+      playFairyVoiceSE();
+      dialogContainer.style.display = 'block';
+      dialogText.textContent = '「もしかして、わたしがみえるのー？」';
+      dialogBtn.style.display = 'inline-block';
+
+      dialogBtn.onclick = () => {
+        playFairyVoiceSE();
+        dialogBtn.style.display = 'none';
+        dialogText.textContent = '「私がみえるの！？このカメラ越しだったらみえるのね！せっかくだし少し遊ぼうよ！今からあなたの周りに隠れるからカメラを動かして、探してみて！」';
+        
+        setTimeout(() => {
+          dialogContainer.style.display = 'none';
+          scoreBadge.style.display = 'block';
+          scoreBadge.textContent = '0/3';
+          startPhase1();
+        }, 3000);
+      };
+    }
+
+    function startPhase1() {
+      currentPhase = 1;
+      isTransitioning = false;
+      stopBobbing();
+
+      rosaWrapper.setAttribute('position', '0 1.2 -2.0');
+      rosaWrapper.setAttribute('rotation', '0 0 0');
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+      setGLBModelOpacity(rosaModel, 1.0);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    function startPhase2() {
+      currentPhase = 2;
+      isTransitioning = false;
+      stopBobbing();
+
+      rosaWrapper.setAttribute('position', '1.5 1.8 -2.0');
+      rosaWrapper.setAttribute('rotation', '0 -30 0');
+      
+      const smallScale = BASE_SCALE * 0.5;
+      rosaModel.setAttribute('scale', `${smallScale} ${smallScale} ${smallScale}`);
+      setGLBModelOpacity(rosaModel, 1.0);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    function startPhase3() {
+      currentPhase = 3;
+      isTransitioning = false;
+      stopBobbing();
+
+      rosaWrapper.setAttribute('position', '-0.8 0.8 -1.5');
+      rosaWrapper.setAttribute('rotation', '0 20 0');
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+      setGLBModelOpacity(rosaModel, 0.4);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    rosaModel.addEventListener('click', () => {
+      if (isTransitioning) return;
+
+      playFoundSE();
+
+      if (currentPhase === 1) {
+        isTransitioning = true;
+        showDialogTemporary('「きゃっ！見つかっちゃった！でもまだまだだ～！」');
+
+        rosaWrapper.setAttribute('animation__spin', {
+          property: 'rotation',
+          to: '0 540 0',
+          dur: 800,
+          easing: 'easeInOutQuad'
+        });
+
+        setTimeout(() => {
+          rosaWrapper.removeAttribute('animation__spin');
+          rosaWrapper.setAttribute('visible', false);
+          scoreBadge.textContent = '1/3';
+        }, 800);
+
+        setTimeout(() => {
+          startPhase2();
+        }, 3000);
+
+      } else if (currentPhase === 2) {
+        isTransitioning = true;
+        showDialogTemporary('「あれれ、すごいじゃん！でも次は絶対無理だよ！」');
+
+        let fadeCount = 10;
+        const fadeInterval = setInterval(() => {
+          fadeCount--;
+          setGLBModelOpacity(rosaModel, fadeCount / 10);
+          if (fadeCount <= 0) {
+            clearInterval(fadeInterval);
+            rosaWrapper.setAttribute('visible', false);
+            scoreBadge.textContent = '2/3';
+          }
+        }, 60);
+
+        setTimeout(() => {
+          startPhase3();
+        }, 3000);
+
+      } else if (currentPhase === 3) {
+        isTransitioning = true;
+        scoreBadge.textContent = '3/3';
+        setGLBModelOpacity(rosaModel, 1.0);
+        startBobbing();
+
+        showDialogTemporary('「降参～！君すごいね！見つかっちゃったなー、でもとってもたのしかったから、特別なプレゼント！記念写真を撮ろー！」');
+
+        setTimeout(() => {
+          dialogContainer.style.display = 'none';
+          scoreBadge.style.display = 'none';
+          arContainer.classList.remove('active');
+          openPhotoScreen();
+        }, 3500);
+      }
+    });
+
+    function showDialogTemporary(text) {
+      dialogText.textContent = text;
+      dialogBtn.style.display = 'none';
+      dialogContainer.style.display = 'block';
+    }
+
+    async function openPhotoScreen() {
+      // インカメラ撮影モード移行時にMindARのカメラを停止
+      try {
+        const sceneEl = document.querySelector('a-scene');
+        const arSystem = sceneEl.systems["mindar-image-system"];
+        if (arSystem) {
+          arSystem.stop();
+        }
+      } catch (e) {
+        console.warn("MindAR stopping error:", e);
+      }
+
+      photoScreen.style.display = 'flex';
+      try {
+        frontStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+        cameraFeed.srcObject = frontStream;
+      } catch (err) {
+        console.error('インカメラ起動エラー:', err);
+        showError('インカメラへのアクセスが許可されていません。');
+      }
+    }
+
+    shutterBtn.addEventListener('click', () => {
+      playFoundSE();
+      const vWidth = cameraFeed.videoWidth || 1080;
+      const vHeight = cameraFeed.videoHeight || 1920;
+
+      photoCanvas.width = vWidth;
+      photoCanvas.height = vHeight;
+      const ctx = photoCanvas.getContext('2d');
+
+      ctx.save();
+      ctx.translate(vWidth, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(cameraFeed, 0, 0, vWidth, vHeight);
+      ctx.restore();
+
+      const frameImg = new Image();
+      frameImg.crossOrigin = "anonymous";
+      frameImg.src = frameOverlay.src;
+      frameImg.onload = () => {
+        ctx.drawImage(frameImg, 0, 0, vWidth, vHeight);
+        const dataUrl = photoCanvas.toDataURL('image/png');
+        capturedImage.src = dataUrl;
+        previewModal.style.display = 'flex';
+      };
+      frameImg.onerror = () => {
+        const dataUrl = photoCanvas.toDataURL('image/png');
+        capturedImage.src = dataUrl;
+        previewModal.style.display = 'flex';
+      };
+    });
+
+    closePreviewBtn.addEventListener('click', () => {
+      previewModal.style.display = 'none';
+    });
+
+    restartGameBtn.addEventListener('click', () => {
+      previewModal.style.display = 'none';
+      photoScreen.style.display = 'none';
+
+      if (frontStream) {
+        frontStream.getTracks().forEach(track => track.stop());
+        frontStream = null;
+        cameraFeed.srcObject = null;
+      }
+
+      currentPhase = 0;
+      isTransitioning = false;
+
+      rosaWrapper.setAttribute('visible', false);
+      stopBobbing();
+
+      startModal.style.display = 'flex';
+    });
+  </script>
+</body>
+</html>
