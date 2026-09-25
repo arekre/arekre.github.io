@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ARかくれんぼ - バラの妖精ローザ</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <!-- A-Frame & MindAR -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      touch-action: none;
+    }
+    
+    /* タップ波紋エフェクト */
+    .tap-ripple {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: rgba(255, 105, 180, 0.7);
+      border-radius: 50%;
+      transform: translate(-50%, -50%) scale(1);
+      pointer-events: none;
+      animation: rippleAnim 0.6s ease-out forwards;
+      z-index: 9999;
+    }
+    @keyframes rippleAnim {
+      0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(5); opacity: 0; }
+    }
+
+    /* UIレイヤー (A-Frameより手前) */
+    #ui-layer {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    
+    .interactive-ui {
+      pointer-events: auto;
+    }
+
+    /* モーダル群 */
+    #start-modal, #photo-preview-modal {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      pointer-events: auto;
+    }
+
+    .modal-content-custom {
+      background: #fff;
+      padding: 20px;
+      border-radius: 15px;
+      text-align: center;
+      max-width: 90%;
+      width: 350px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+
+    .btn-pink {
+      background-color: #ff69b4;
+      color: white;
+      border-radius: 25px;
+      padding: 10px 30px;
+      font-weight: bold;
+      border: none;
+      transition: transform 0.1s;
+    }
+    .btn-pink:active { transform: scale(0.95); }
+
+    /* ダイアログUI */
+    #dialog-box {
+      background: rgba(255, 255, 255, 0.9);
+      border: 3px solid #ff69b4;
+      border-radius: 15px;
+      padding: 15px;
+      margin: 20px;
+      text-align: left;
+      font-weight: bold;
+      display: none;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    
+    /* カウントUI */
+    #counter-ui {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 105, 180, 0.9);
+      color: white;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 1.2rem;
+      display: none;
+    }
+
+    /* エラー表示 */
+    #error-text {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: red;
+      background: white;
+      padding: 5px;
+      font-size: 0.8rem;
+      display: none;
+    }
+
+    /* フォトフレーム画面 */
+    #photo-mode-container {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #000;
+      z-index: 50;
+      display: none;
+      pointer-events: auto;
+    }
+    #camera-video {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* インカメラ反転 */
+    }
+    #photo-frame-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      /* frame.svgが存在しない場合はダミーのボーダーを表示 */
+      border: 15px solid rgba(255,105,180, 0.5);
+      box-sizing: border-box;
+      background-image: url('frame.svg');
+      background-size: cover;
+      background-position: center;
+    }
+    .photo-ui {
+      position: absolute;
+      z-index: 55;
+    }
+    #btn-switch-cam { top: 20px; right: 20px; }
+    #btn-shutter {
+      bottom: 30px; left: 50%;
+      transform: translateX(-50%);
+      width: 70px; height: 70px;
+      background: white;
+      border: 5px solid #ff69b4;
+      border-radius: 50%;
+    }
+    #btn-shutter:active { background: #ddd; }
+    
+    /* パーティクル（花びら） */
+    .petal {
+      position: absolute;
+      width: 10px; height: 10px;
+      background: #ffb7c5;
+      border-radius: 50% 0 50% 50%;
+      pointer-events: none;
+      animation: fall 2s linear forwards;
+    }
+    @keyframes fall {
+      to { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 定数・主要スクリプト -->
+  <script>
+    const BASE_SCALE = 2.0;
+    
+    // Y軸ランダム用関数
+    function getRandom(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    // GLBモデル透過用関数
+    function setGLBModelOpacity(modelEl, opacity) {
+      const mesh = modelEl.getObject3D('mesh');
+      if (mesh) {
+        mesh.traverse((node) => {
+          if (node.isMesh && node.material) {
+            node.material.transparent = true;
+            node.material.opacity = opacity;
+            node.material.needsUpdate = true;
+          }
+        });
+      }
+    }
+  </script>
+
+  <!-- タップ波紋の制御 -->
+  <script>
+    document.addEventListener('pointerdown', (e) => {
+      const ripple = document.createElement('div');
+      ripple.className = 'tap-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 600);
+    });
+  </script>
+
+  <!-- A-Frame & MindAR Scene -->
+  <!-- mindar-imageのパスはダミーを入れています。適宜 targets.mind に置き換えてください -->
+  <a-scene 
+    mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.mind; autoStart: false;" 
+    color-space="sRGB" 
+    renderer="colorManagement: true, physicallyCorrectLights: true" 
+    vr-mode-ui="enabled: false" 
+    device-orientation-permission-ui="enabled: false">
+    
+    <a-assets timeout="10000">
+      <a-asset-item id="roza-model" src="roza.glb"></a-asset-item>
+    </a-assets>
+
+    <!-- カメラとRaycaster (PC用マウス/タッチ判定用) -->
+    <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false" 
+              raycaster="objects: .clickable" cursor="fuse: false; rayOrigin: mouse;">
+    </a-camera>
+
+    <!-- 照明・ライティング設計 -->
+    <a-light type="ambient" color="#ffffff" intensity="1.2"></a-light>
+    <a-light type="directional" color="#ffffff" intensity="0.8" position="-1 2 1" castShadow="false"></a-light>
+    <a-light type="directional" color="#ffdddd" intensity="0.3" position="1 1 -1"></a-light>
+
+    <!-- AR空間上のローザ (最初はプロローグ用の位置) -->
+    <a-entity id="roza-entity" class="clickable" 
+              gltf-model="#roza-model" 
+              position="0 1.5 -3" 
+              scale="2 2 2"
+              animation="property: position; dir: alternate; dur: 1500; loop: true; to: 0 1.7 -3"
+              visible="false">
+    </a-entity>
+
+    <!-- ARマーカー（缶バッジ認識演出用） -->
+    <a-entity mindar-image-target="targetIndex: 0" id="marker-target"></a-entity>
+  </a-scene>
+
+  <!-- UI Layer -->
+  <div id="ui-layer">
+    <div id="error-text">モデルの読み込みに失敗しました（代替表示中）</div>
+    <div id="counter-ui" class="interactive-ui">0/3</div>
+    
+    <div style="flex-grow: 1;"></div> <!-- 余白 -->
+
+    <!-- ダイアログ -->
+    <div id="dialog-box" class="interactive-ui">
+      <p id="dialog-text" class="mb-2"></p>
+      <div id="dialog-action" class="text-end"></div>
+    </div>
+  </div>
+
+  <!-- 0. スタートモーダル -->
+  <div id="start-modal">
+    <div class="modal-content-custom">
+      <h3 class="mb-3" style="color:#ff69b4;">ウツボ公園へ ようこそ！</h3>
+      <p class="text-start mb-4">
+        街のまん中にあるこの公園には、千株もの美しいバラを守る『バラの妖精族 ロサ』が住んでいます。<br>
+        魔法のレンズを手に入れたあなたは、妖精ローザに話しかけられます。
+      </p>
+      <button id="btn-start" class="btn btn-pink">Start (tap)</button>
+    </div>
+  </div>
+
+  <!-- 3. フォトフレーム画面 -->
+  <div id="photo-mode-container">
+    <video id="camera-video" autoplay playsinline></video>
+    <div id="photo-frame-overlay"></div>
+    <button id="btn-switch-cam" class="btn btn-secondary photo-ui interactive-ui">切替</button>
+    <button id="btn-shutter" class="photo-ui interactive-ui"></button>
+  </div>
+
+  <!-- 撮影プレビューモーダル -->
+  <div id="photo-preview-modal" style="display:none;">
+    <div class="modal-content-custom">
+      <h4 class="mb-2">記念写真</h4>
+      <img id="preview-img" style="width:100%; border-radius:10px; margin-bottom:15px;" src="" alt="プレビュー">
+      <p style="font-size: 0.9rem; color: #666;">画像を長押しまたは右クリックで保存できます</p>
+      <button onclick="document.getElementById('photo-preview-modal').style.display='none'" class="btn btn-pink mt-2">閉じる</button>
+    </div>
+  </div>
+
+
+  <!-- ゲームロジックスクリプト -->
+  <script>
+    const sceneEl = document.querySelector('a-scene');
+    const rozaEl = document.querySelector('#roza-entity');
+    const dialogBox = document.getElementById('dialog-box');
+    const dialogText = document.getElementById('dialog-text');
+    const dialogAction = document.getElementById('dialog-action');
+    const counterUi = document.getElementById('counter-ui');
+    let currentPhase = 0;
+    
+    // スケール適用
+    rozaEl.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+
+    // モデルフォールバック処理
+    rozaEl.addEventListener('model-error', () => {
+      document.getElementById('error-text').style.display = 'block';
+      rozaEl.removeAttribute('gltf-model');
+      rozaEl.setAttribute('geometry', 'primitive: sphere; radius: 0.5');
+      rozaEl.setAttribute('material', 'color: pink');
+    });
+
+    // --- 0. スタートモーダル ---
+    document.getElementById('btn-start').addEventListener('click', () => {
+      document.getElementById('start-modal').style.display = 'none';
+      
+      // MindAR起動
+      const arSystem = sceneEl.systems["mindar-image-system"];
+      if(arSystem) arSystem.start();
+      
+      startPrologue();
+    });
+
+    // --- 1. プロローグ ---
+    function startPrologue() {
+      rozaEl.setAttribute('visible', 'true');
+      dialogBox.style.display = 'block';
+      dialogText.innerText = '「もしかして、わたしがみえるのー？」';
+      dialogAction.innerHTML = '<button id="btn-next-dialog" class="btn btn-sm btn-pink">次へ</button>';
+      
+      document.getElementById('btn-next-dialog').addEventListener('click', () => {
+        dialogText.innerText = '「私がみえるの！？このカメラ越しだったらみえるのね！せっかくだし少し遊ぼうよ！今からあなたの周りに隠れるからカメラを動かして、探してみて！」';
+        dialogAction.innerHTML = '';
+        
+        // 2.5秒後にゲームスタート
+        setTimeout(() => {
+          dialogBox.style.display = 'none';
+          counterUi.style.display = 'block';
+          startGamePhase(1);
+        }, 2500);
+      });
+    }
+
+    // --- 2. ARかくれんぼ メイン処理 ---
+    function startGamePhase(phase) {
+      currentPhase = phase;
+      counterUi.innerText = `${phase - 1}/3`;
+      
+      // ゆったり揺れるアニメーション解除
+      rozaEl.removeAttribute('animation');
+      
+      if (phase === 1) {
+        // 地面付近
+        const px = getRandom(-3, 3);
+        const pz = getRandom(-4, -2);
+        rozaEl.setAttribute('position', `${px} 0 ${pz}`);
+        rozaEl.setAttribute('rotation', '0 180 0');
+        rozaEl.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+        setGLBModelOpacity(rozaEl, 1.0); // 透過リセット
+        rozaEl.setAttribute('visible', 'true');
+        
+      } else if (phase === 2) {
+        rozaEl.setAttribute('position', '2.5 2.5 -2');
+        rozaEl.setAttribute('rotation', '0 -40 0');
+        rozaEl.setAttribute('scale', `${BASE_SCALE * 0.4} ${BASE_SCALE * 0.4} ${BASE_SCALE * 0.4}`);
+        rozaEl.setAttribute('visible', 'true');
+        
+      } else if (phase === 3) {
+        const px = getRandom(1.2, 2.3) * (Math.random() < 0.5 ? 1 : -1);
+        const pz = getRandom(-3, -1.5);
+        rozaEl.setAttribute('position', `${px} 1 ${pz}`);
+        rozaEl.setAttribute('rotation', '0 20 0');
+        rozaEl.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+        rozaEl.setAttribute('visible', 'true');
+        
+        // 透明度を下げる
+        setTimeout(() => setGLBModelOpacity(rozaEl, 0.35), 500); // 描画待ち
+      }
+    }
+
+    // タップ判定
+    rozaEl.addEventListener('click', () => {
+      if (currentPhase === 1) {
+        dialogBox.style.display = 'block';
+        dialogText.innerText = '「きゃっ！見つかっちゃった！でもまだまだだ～！」';
+        
+        // クルッと1回転
+        rozaEl.setAttribute('animation__rot', 'property: rotation; to: 0 540 0; dur: 1000; easing: easeInOutQuad');
+        
+        setTimeout(() => {
+          rozaEl.setAttribute('visible', 'false');
+          dialogBox.style.display = 'none';
+          counterUi.innerText = `1/3`;
+          rozaEl.removeAttribute('animation__rot');
+          setTimeout(() => startGamePhase(2), 3000);
+        }, 1500);
+
+      } else if (currentPhase === 2) {
+        dialogBox.style.display = 'block';
+        dialogText.innerText = '「あれれ、すごいじゃん！でも次は絶対無理だよ！」';
+        
+        // 消失演出 (簡易的なフェードアウト)
+        let op = 1.0;
+        const fade = setInterval(() => {
+          op -= 0.1;
+          setGLBModelOpacity(rozaEl, Math.max(op, 0));
+          if (op <= 0) {
+            clearInterval(fade);
+            rozaEl.setAttribute('visible', 'false');
+            dialogBox.style.display = 'none';
+            counterUi.innerText = `2/3`;
+            setTimeout(() => startGamePhase(3), 3000);
+          }
+        }, 100);
+
+      } else if (currentPhase === 3) {
+        dialogBox.style.display = 'block';
+        dialogText.innerText = '「降参～！君すごいね！見つかっちゃったなー、でもとってもたのしかったから、特別なプレゼント！記念写真を撮ろー！」';
+        counterUi.innerText = `3/3`;
+        
+        setGLBModelOpacity(rozaEl, 1.0);
+        // 上下揺れアニメーション再開
+        const currentPos = rozaEl.getAttribute('position');
+        rozaEl.setAttribute('animation', `property: position; dir: alternate; dur: 1500; loop: true; to: ${currentPos.x} ${currentPos.y + 0.2} ${currentPos.z}`);
+        
+        setTimeout(() => {
+          dialogBox.style.display = 'none';
+          startPhotoFrameMode();
+        }, 3500);
+      }
+    });
+
+    // --- マーカー認識時の演出 (1秒に1回制限) ---
+    const markerTarget = document.getElementById('marker-target');
+    let lastPetalTime = 0;
+    
+    markerTarget.addEventListener('targetFound', () => {
+      const now = Date.now();
+      if (now - lastPetalTime > 1000) {
+        lastPetalTime = now;
+        createPetalEffect();
+      }
+    });
+
+    function createPetalEffect() {
+      // 画面上にパーティクルをDOMとして生成
+      const petal = document.createElement('div');
+      petal.className = 'petal';
+      petal.style.left = getRandom(20, 80) + 'vw';
+      petal.style.top = '-20px';
+      document.body.appendChild(petal);
+      setTimeout(() => petal.remove(), 2000);
+    }
+
+    // --- 3. フォトフレーム画面 ---
+    let videoStream = null;
+    let useFrontCam = true;
+    const videoEl = document.getElementById('camera-video');
+
+    function startPhotoFrameMode() {
+      // AR非表示
+      sceneEl.style.display = 'none';
+      document.getElementById('ui-layer').style.display = 'none';
+      document.getElementById('photo-mode-container').style.display = 'block';
+      
+      initCamera();
+    }
+
+    async function initCamera() {
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+      }
+      const constraints = {
+        video: { facingMode: useFrontCam ? "user" : "environment" },
+        audio: false
+      };
+      try {
+        videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoEl.srcObject = videoStream;
+        // インカメラ時は左右反転、アウトカメラ時は戻す
+        videoEl.style.transform = useFrontCam ? 'scaleX(-1)' : 'scaleX(1)';
+      } catch (err) {
+        console.error("Camera access denied or failed:", err);
+      }
+    }
+
+    document.getElementById('btn-switch-cam').addEventListener('click', () => {
+      useFrontCam = !useFrontCam;
+      initCamera();
+    });
+
+    // 撮影・合成処理
+    document.getElementById('btn-shutter').addEventListener('click', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      const ctx = canvas.getContext('2d');
+      
+      // インカメラの場合はコンテキストを反転して描画
+      if (useFrontCam) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      
+      // 変換を元に戻す
+      if (useFrontCam) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+
+      // frame.svg を合成
+      const frameImg = new Image();
+      frameImg.src = 'frame.svg'; 
+      frameImg.onload = () => {
+        ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
+        showPhotoPreview(canvas.toDataURL('image/png'));
+      };
+      frameImg.onerror = () => {
+        // svgが無い場合は動画部分のみプレビュー
+        showPhotoPreview(canvas.toDataURL('image/png'));
+      };
+    });
+
+    function showPhotoPreview(dataUrl) {
+      const previewImg = document.getElementById('preview-img');
+      previewImg.src = dataUrl;
+      document.getElementById('photo-preview-modal').style.display = 'flex';
+    }
+  </script>
+</body>
+</html>
