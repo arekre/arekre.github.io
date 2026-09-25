@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ウツボ公園へ ようこそ！ - バラの妖精ローザのかくれんぼ</title>
+
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  
+  <!-- A-Frame (v1.4.2) -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <!-- MindAR (A-Frame版) -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      background-color: #000;
+    }
+
+    /* 3D / AR レイヤー */
+    #ar-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    #ar-container.active {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    a-scene {
+      background: transparent !important;
+    }
+
+    /* タップ波紋エフェクト (.tap-ripple) */
+    .tap-ripple {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border: 3px solid #ff4d88;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0.5);
+      animation: ripple-anim 0.6s ease-out forwards;
+      z-index: 999;
+    }
+    @keyframes ripple-anim {
+      0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+    }
+
+    /* カウントUI */
+    #score-badge {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(4px);
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-size: 1.25rem;
+      font-weight: bold;
+      color: #d63384;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: none;
+    }
+
+    /* ダイアログ UI */
+    #dialog-container {
+      position: absolute;
+      bottom: 24px;
+      left: 5%;
+      width: 90%;
+      max-width: 480px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.95);
+      border: 2px solid #f8d7da;
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      display: none;
+      animation: fadeInUp 0.4s ease;
+    }
+    @keyframes fadeInUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    #dialog-text {
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: #333;
+      margin-bottom: 12px;
+      min-height: 48px;
+    }
+
+    /* ピンク色丸みボタン */
+    .btn-fairy {
+      background: linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%);
+      color: #fff;
+      border: none;
+      border-radius: 25px;
+      padding: 10px 24px;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(255, 117, 140, 0.4);
+      transition: all 0.2s ease;
+    }
+    .btn-fairy:active {
+      transform: scale(0.95);
+    }
+
+    /* スタートモーダル */
+    #start-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .start-card {
+      background: #fff;
+      border-radius: 24px;
+      padding: 28px 24px;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    }
+    .start-card h2 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #d63384;
+      margin-bottom: 16px;
+    }
+    .start-card p {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: #555;
+      margin-bottom: 24px;
+    }
+
+    /* フォトフレーム画面 */
+    #photo-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 50;
+      background: #000;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .camera-header {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 10;
+    }
+    .camera-wrapper {
+      position: relative;
+      width: 100%;
+      height: calc(100% - 100px);
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #camera-feed {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #frame-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .shutter-panel {
+      height: 100px;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .btn-shutter {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      border: 4px solid #fff;
+      background: #ff4d88;
+      box-shadow: 0 0 12px rgba(0,0,0,0.5);
+    }
+
+    /* 撮影プレビューモーダル */
+    #preview-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.92);
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #captured-image {
+      max-width: 85%;
+      max-height: 65%;
+      border-radius: 12px;
+      border: 2px solid #fff;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      margin-bottom: 12px;
+    }
+    .save-notice {
+      color: #fff;
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    /* エラーモーダル */
+    #error-text-display {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #ff4d88;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      z-index: 20;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- カウントUI -->
+  <div id="score-badge">0/3</div>
+
+  <!-- エラーフォールバック表示用 -->
+  <div id="error-text-display">3Dモデルのロードに失敗したため、代替オブジェクトを表示しています。</div>
+
+  <!-- ダイアログ UI -->
+  <div id="dialog-container">
+    <div id="dialog-text"></div>
+    <div class="text-end">
+      <button id="dialog-btn" class="btn btn-fairy btn-sm">タップして進む</button>
+    </div>
+  </div>
+
+  <!-- 0. スタートモーダル -->
+  <div id="start-modal">
+    <div class="start-card">
+      <h2>ウツボ公園へ ようこそ！</h2>
+      <p>
+        街のまん中にあるこの公園には、千株もの美しいバラを守る『バラの妖精族 ロサ』が住んでいます。<br/>
+        魔法のレンズを手に入れたあなたは、妖精ローザに話しかけられます。
+      </p>
+      <button id="start-btn" class="btn-fairy px-5 py-2">Start (tap)</button>
+    </div>
+  </div>
+
+  <!-- A-Frame / MindAR キャンバス空間 -->
+  <div id="ar-container">
+    <a-scene 
+      mindar-image="imageTargetSrc: targets.mind; autoStart: false; filterMinCF:0.0001; filterBeta: 0.001;" 
+      embedded 
+      vr-mode-ui="enabled: false" 
+      device-orientation-permission-ui="enabled: false"
+      cursor="rayOrigin: mouse" 
+      raycaster="objects: .clickable">
+      
+      <a-assets>
+        <a-asset-item id="fairy-glb" src="roza.glb"></a-asset-item>
+      </a-assets>
+
+      <!-- 光源設定：穴抜けや不自然な影を防ぐ環境光・平行光源設定 -->
+      <a-light type="ambient" color="#ffffff" intensity="1.6"></a-light>
+      <a-light type="directional" color="#ffffff" position="1 4 2" intensity="1.2"></a-light>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <!-- 缶バッジ（ARマーカー）認識用ターゲット -->
+      <a-entity id="ar-target" mindar-image-target="targetIndex: 0">
+        <!-- 花びら舞い散る演出コンテナ -->
+        <a-entity id="petal-container"></a-entity>
+      </a-entity>
+
+      <!-- メインのローザ設置エンティティ -->
+      <a-entity id="rosa-wrapper" position="0 0 -2.0" visible="false">
+        <a-entity id="rosa-model" class="clickable"></a-entity>
+      </a-entity>
+    </a-scene>
+  </div>
+
+  <!-- 3. フォトフレーム画面 -->
+  <div id="photo-screen">
+    <div class="camera-header">
+      <button id="switch-cam-btn" class="btn btn-sm btn-light rounded-circle shadow">🔄</button>
+    </div>
+    <div class="camera-wrapper">
+      <video id="camera-feed" autoplay playsinline muted></video>
+      <img id="frame-overlay" src="frame.svg" alt="frame" onerror="this.style.display='none'" />
+    </div>
+    <div class="shutter-panel">
+      <button id="shutter-btn" class="btn-shutter"></button>
+    </div>
+  </div>
+
+  <!-- 撮影結果プレビューモーダル -->
+  <div id="preview-modal">
+    <img id="captured-image" alt="Captured Photo" />
+    <div class="save-notice">画像を長押しまたは右クリックで保存できます</div>
+    <div class="d-flex gap-2">
+      <button id="close-preview-btn" class="btn btn-outline-light rounded-pill px-4">再撮影</button>
+    </div>
+  </div>
+
+  <canvas id="photo-canvas" style="display: none;"></canvas>
+
+  <script>
+    // --- 定数管理 ---
+    const BASE_SCALE = 2.0;
+
+    // --- ゲーム状態管理 ---
+    let currentPhase = 0;
+    let isTransitioning = false;
+    let cameraFacingMode = "user"; // 優先インカメラ
+    let currentStream = null;
+    let petalInterval = null;
+
+    // --- Web Audio API (効果音) ---
+    let audioCtx = null;
+    function initAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playSE(type) {
+      initAudioContext();
+      if (!audioCtx) return;
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      const now = audioCtx.currentTime;
+
+      if (type === 'start') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      } else if (type === 'tap') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.1);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      } else if (type === 'found') {
+        const notes = [659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          const subOsc = audioCtx.createOscillator();
+          const subGain = audioCtx.createGain();
+          subOsc.connect(subGain);
+          subGain.connect(audioCtx.destination);
+          subOsc.type = 'sine';
+          subOsc.frequency.setValueAtTime(freq, now + idx * 0.08);
+          subGain.gain.setValueAtTime(0.2, now + idx * 0.08);
+          subGain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.08 + 0.15);
+          subOsc.start(now + idx * 0.08);
+          subOsc.stop(now + idx * 0.08 + 0.15);
+        });
+      }
+    }
+
+    // --- DOM要素取得 ---
+    const startModal = document.getElementById('start-modal');
+    const startBtn = document.getElementById('start-btn');
+    const dialogContainer = document.getElementById('dialog-container');
+    const dialogText = document.getElementById('dialog-text');
+    const dialogBtn = document.getElementById('dialog-btn');
+    const scoreBadge = document.getElementById('score-badge');
+    const rosaWrapper = document.getElementById('rosa-wrapper');
+    const rosaModel = document.getElementById('rosa-model');
+    const arContainer = document.getElementById('ar-container');
+    const errorTextDisplay = document.getElementById('error-text-display');
+    
+    const photoScreen = document.getElementById('photo-screen');
+    const cameraFeed = document.getElementById('camera-feed');
+    const shutterBtn = document.getElementById('shutter-btn');
+    const switchCamBtn = document.getElementById('switch-cam-btn');
+    const previewModal = document.getElementById('preview-modal');
+    const capturedImage = document.getElementById('captured-image');
+    const closePreviewBtn = document.getElementById('close-preview-btn');
+    const photoCanvas = document.getElementById('photo-canvas');
+    const frameOverlay = document.getElementById('frame-overlay');
+
+    // --- タップ波紋エフェクト (5. タップ波紋エフェクト) ---
+    window.addEventListener('pointerdown', (e) => {
+      playSE('tap');
+      const ripple = document.createElement('div');
+      ripple.className = 'tap-ripple';
+      ripple.style.left = `${e.clientX}px`;
+      ripple.style.top = `${e.clientY}px`;
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 600);
+    });
+
+    // --- 3Dモデル読み込み＆フォールバック処理 (4. モデルフォールバック機能) ---
+    window.addEventListener('DOMContentLoaded', () => {
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+      rosaModel.setAttribute('gltf-model', 'roza.glb');
+
+      // ロード失敗時のフォールバック処理
+      rosaModel.addEventListener('model-error', () => {
+        console.warn('roza.glb の読み込みに失敗しました。フォールバック表示を適用します。');
+        errorTextDisplay.style.display = 'block';
+        buildFallbackShape();
+      });
+    });
+
+    function buildFallbackShape() {
+      rosaModel.removeAttribute('gltf-model');
+      rosaModel.innerHTML = `
+        <a-sphere radius="0.3" color="#ff69b4" position="0 0.3 0"></a-sphere>
+        <a-cone radius-bottom="0.25" radius-top="0" height="0.6" color="#ff1493" position="0 -0.2 0"></a-cone>
+      `;
+    }
+
+    // GLB透過用ユーティリティ関数 (【フェーズ3】要件)
+    function setGLBModelOpacity(entityEl, opacity) {
+      const mesh = entityEl.getObject3D('mesh');
+      if (mesh) {
+        mesh.traverse((node) => {
+          if (node.isMesh && node.material) {
+            node.material.transparent = true;
+            node.material.opacity = opacity;
+            node.material.needsUpdate = true;
+          }
+        });
+      } else {
+        // フォールバック形状用の簡易処理
+        entityEl.querySelectorAll('a-sphere, a-cone').forEach(child => {
+          child.setAttribute('material', `transparent: true; opacity: ${opacity}`);
+        });
+      }
+    }
+
+    // 上下揺れアニメーション制御
+    function enableBobbing(enable) {
+      if (enable) {
+        rosaModel.setAttribute('animation__bob', {
+          property: 'position',
+          dir: 'alternate',
+          dur: 1500,
+          loop: true,
+          easing: 'easeInOutSine',
+          to: '0 0.25 0'
+        });
+      } else {
+        rosaModel.removeAttribute('animation__bob');
+        rosaModel.setAttribute('position', '0 0 0');
+      }
+    }
+
+    // --- ゲームフロー設計 ---
+
+    // 0. スタートモーダル動作
+    startBtn.addEventListener('click', async () => {
+      playSE('start');
+      startModal.style.display = 'none';
+
+      // MindAR 起動 & 3D空間アクティブ化
+      arContainer.classList.add('active');
+      const sceneEl = document.querySelector('a-scene');
+      if (sceneEl.systems["mindar-image-system"]) {
+        sceneEl.systems["mindar-image-system"].start();
+      }
+
+      rosaWrapper.setAttribute('visible', true);
+      startPrologue();
+    });
+
+    // 1. プロローグ（会話パート）
+    function startPrologue() {
+      enableBobbing(true);
+      dialogContainer.style.display = 'block';
+      dialogText.textContent = '「もしかして、わたしがみえるのー？」';
+      dialogBtn.style.display = 'inline-block';
+
+      dialogBtn.onclick = () => {
+        playSE('tap');
+        dialogBtn.style.display = 'none';
+        dialogText.textContent = '「私がみえるの！？このカメラ越しだったらみえるのね！せっかくだし少し遊ぼうよ！今からあなたの周りに隠れるからカメラを動かして、探してみて！」';
+        
+        setTimeout(() => {
+          dialogContainer.style.display = 'none';
+          scoreBadge.style.display = 'block';
+          scoreBadge.textContent = '0/3';
+          startPhase1();
+        }, 2500);
+      };
+    }
+
+    // 2. ARかくれんぼ（メインゲームループ）
+
+    // 【フェーズ1】
+    function startPhase1() {
+      currentPhase = 1;
+      isTransitioning = false;
+      enableBobbing(false);
+
+      const randomX = (Math.random() - 0.5) * 1.5;
+      const randomZ = -1.5 - Math.random() * 1.0;
+      
+      rosaWrapper.setAttribute('position', `${randomX} -0.3 ${randomZ}`);
+      rosaWrapper.setAttribute('rotation', '0 180 0');
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+      setGLBModelOpacity(rosaModel, 1.0);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    // 【フェーズ2】
+    function startPhase2() {
+      currentPhase = 2;
+      isTransitioning = false;
+      enableBobbing(false);
+
+      rosaWrapper.setAttribute('position', '2.5 2.5 -2');
+      rosaWrapper.setAttribute('rotation', '0 -40 0');
+      
+      const smallScale = BASE_SCALE * 0.4;
+      rosaModel.setAttribute('scale', `${smallScale} ${smallScale} ${smallScale}`);
+      setGLBModelOpacity(rosaModel, 1.0);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    // 【フェーズ3】
+    function startPhase3() {
+      currentPhase = 3;
+      isTransitioning = false;
+      enableBobbing(false);
+
+      const randX = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 1.1);
+      const randZ = -1.2 - Math.random() * 1.1;
+
+      rosaWrapper.setAttribute('position', `${randX} 1 ${randZ}`);
+      rosaWrapper.setAttribute('rotation', '0 20 0');
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+      setGLBModelOpacity(rosaModel, 0.35);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    // タップ判定イベント
+    rosaModel.addEventListener('click', () => {
+      if (isTransitioning || currentPhase === 0) return;
+
+      playSE('found');
+
+      if (currentPhase === 1) {
+        isTransitioning = true;
+        showDialogTemporary('「きゃっ！見つかっちゃった！でもまだまだだ～！」');
+
+        rosaWrapper.setAttribute('animation__spin', {
+          property: 'rotation',
+          to: '0 540 0',
+          dur: 1000,
+          easing: 'easeInOutQuad'
+        });
+
+        setTimeout(() => {
+          rosaWrapper.removeAttribute('animation__spin');
+          rosaWrapper.setAttribute('visible', false);
+          scoreBadge.textContent = '1/3';
+        }, 1000);
+
+        setTimeout(() => {
+          startPhase2();
+        }, 3000);
+
+      } else if (currentPhase === 2) {
+        isTransitioning = true;
+        showDialogTemporary('「あれれ、すごいじゃん！でも次は絶対無理だよ！」');
+
+        let opacity = 1.0;
+        const fadeInterval = setInterval(() => {
+          opacity -= 0.1;
+          if (opacity <= 0) {
+            clearInterval(fadeInterval);
+            rosaWrapper.setAttribute('visible', false);
+            scoreBadge.textContent = '2/3';
+          } else {
+            setGLBModelOpacity(rosaModel, opacity);
+          }
+        }, 80);
+
+        setTimeout(() => {
+          startPhase3();
+        }, 3000);
+
+      } else if (currentPhase === 3) {
+        isTransitioning = true;
+        scoreBadge.textContent = '3/3';
+        setGLBModelOpacity(rosaModel, 1.0);
+        enableBobbing(true);
+
+        showDialogTemporary('「降参～！君すごいね！見つかっちゃったなー、でもとってもたのしかったから、特別なプレゼント！記念写真を撮ろー！」');
+
+        setTimeout(() => {
+          dialogContainer.style.display = 'none';
+          scoreBadge.style.display = 'none';
+          stopARSceneAndStartPhoto();
+        }, 3500);
+      }
+    });
+
+    function showDialogTemporary(text) {
+      dialogText.textContent = text;
+      dialogBtn.style.display = 'none';
+      dialogContainer.style.display = 'block';
+    }
+
+    // 【共通仕様：缶バッジ（ARマーカー）認識演出】
+    const arTarget = document.getElementById('ar-target');
+    const petalContainer = document.getElementById('petal-container');
+
+    arTarget.addEventListener('targetFound', () => {
+      // 動作軽量化：1秒ごとに1回のみパーティクルを動的生成
+      if (!petalInterval) {
+        petalInterval = setInterval(() => {
+          createRosePetal();
+        }, 1000);
+      }
+    });
+
+    arTarget.addEventListener('targetLost', () => {
+      if (petalInterval) {
+        clearInterval(petalInterval);
+        petalInterval = null;
+      }
+      petalContainer.innerHTML = '';
+    });
+
+    function createRosePetal() {
+      const petal = document.createElement('a-plane');
+      const pX = (Math.random() - 0.5) * 1.5;
+      const pZ = (Math.random() - 0.5) * 1.5;
+      
+      petal.setAttribute('position', `${pX} 1.5 ${pZ}`);
+      petal.setAttribute('rotation', `${Math.random()*360} ${Math.random()*360} 0`);
+      petal.setAttribute('width', '0.15');
+      petal.setAttribute('height', '0.15');
+      petal.setAttribute('color', '#ff4d88');
+      petal.setAttribute('material', 'transparent: true; opacity: 0.8; side: double');
+      
+      petal.setAttribute('animation__fall', {
+        property: 'position',
+        to: `${pX} 0 ${pZ}`,
+        dur: 2000,
+        easing: 'linear'
+      });
+
+      petalContainer.appendChild(petal);
+
+      setTimeout(() => {
+        if (petal.parentNode) {
+          petal.parentNode.removeChild(petal);
+        }
+      }, 2000);
+    }
+
+    // 3. フォトフレーム画面処理
+    function stopARSceneAndStartPhoto() {
+      // MindAR / 3D空間の停止
+      const sceneEl = document.querySelector('a-scene');
+      if (sceneEl.systems["mindar-image-system"]) {
+        sceneEl.systems["mindar-image-system"].stop();
+      }
+      arContainer.classList.remove('active');
+
+      // フォトフレーム画面切り替え
+      photoScreen.style.display = 'flex';
+      initWebCam(cameraFacingMode);
+    }
+
+    async function initWebCam(facingMode) {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 1920 } },
+          audio: false
+        });
+        cameraFeed.srcObject = currentStream;
+      } catch (err) {
+        console.error("カメラの起動に失敗しました:", err);
+      }
+    }
+
+    // アウト/インカメラ切り替えボタン
+    switchCamBtn.addEventListener('click', () => {
+      cameraFacingMode = (cameraFacingMode === "user") ? "environment" : "user";
+      initWebCam(cameraFacingMode);
+    });
+
+    // 撮影・合成・保存処理
+    shutterBtn.addEventListener('click', () => {
+      playSE('tap');
+
+      const width = cameraFeed.videoWidth || 720;
+      const height = cameraFeed.videoHeight || 1280;
+
+      photoCanvas.width = width;
+      photoCanvas.height = height;
+      const ctx = photoCanvas.getContext('2d');
+
+      // インカメラ時は左右反転描画
+      if (cameraFacingMode === "user") {
+        ctx.save();
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(cameraFeed, 0, 0, width, height);
+        ctx.restore();
+      } else {
+        ctx.drawImage(cameraFeed, 0, 0, width, height);
+      }
+
+      // frame.svg を重ねて描画
+      const frameImg = new Image();
+      frameImg.crossOrigin = "anonymous";
+      frameImg.src = frameOverlay.src;
+      
+      frameImg.onload = () => {
+        ctx.drawImage(frameImg, 0, 0, width, height);
+        showCapturedResult();
+      };
+      frameImg.onerror = () => {
+        // 画像ロードエラー時のフォールバック処理
+        showCapturedResult();
+      };
+    });
+
+    function showCapturedResult() {
+      const dataUrl = photoCanvas.toDataURL('image/png');
+      capturedImage.src = dataUrl;
+      previewModal.style.display = 'flex';
+    }
+
+    closePreviewBtn.addEventListener('click', () => {
+      previewModal.style.display = 'none';
+    });
+  </script>
+</body>
+</html>
