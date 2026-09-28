@@ -1,0 +1,99 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>ローカル統合テスト</title>
+<style>body{font-family:sans-serif}iframe{width:390px;height:530px;border:1px solid #aaa}button{padding:10px;margin:4px}pre{white-space:pre-wrap}</style>
+<h1>ローカル統合テスト（実カメラ不使用）</h1>
+<button id="load">テスト開始</button><button id="photo">写真画面へ</button><button id="ar">AR認識テスト</button>
+<button id="deny">次のカメラ取得を拒否</button><button id="missing">次の切替先を欠落</button><button id="blank">マーカーを隠す</button>
+<button id="run-photo">撮影の自動テスト</button><button id="run-ar">認識の自動テスト</button><button id="run-game">ゲーム進行テスト</button><button id="report">状態を確認</button><pre id="report-text"></pre><iframe id="app" title="テスト中のアプリ"></iframe>
+<script>
+let frame=document.getElementById('app');
+const adapter=()=>{
+ window.testCapture={active:0,requests:0,deny:false,missing:false,blank:false};
+ const c=document.createElement('canvas');c.width=640;c.height=480;const ctx=c.getContext('2d');
+ const marker=new Image();marker.src='assets/hiro.png';
+ function draw(){ctx.fillStyle='white';ctx.fillRect(0,0,640,480);if(marker.complete&&marker.naturalWidth&&!testCapture.blank)ctx.drawImage(marker,180,100,280,280);
+ ctx.fillStyle='#d73370';ctx.fillRect(20,20,70,70);ctx.fillStyle='#2467aa';ctx.fillRect(550,390,70,70);requestAnimationFrame(draw)}draw();
+ Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async options=>{
+  testCapture.requests++;
+  if(testCapture.deny){testCapture.deny=false;throw new DOMException('Denied','NotAllowedError')}
+  if(testCapture.missing&&options.video.facingMode.exact){testCapture.missing=false;throw new DOMException('Missing','OverconstrainedError')}
+  const stream=c.captureStream(30),track=stream.getVideoTracks()[0];testCapture.active++;
+  const original=track.stop.bind(track);let stopped=false;track.stop=()=>{if(!stopped){stopped=true;testCapture.active--}original()};
+  track.getSettings=()=>({facingMode:options.video.facingMode.exact||options.video.facingMode.ideal});return stream;
+ }}});
+};
+document.getElementById('load').onclick=async()=>{
+ const text=await(await fetch('../index.html')).text();
+ frame.srcdoc=text.replace('<head>','<head><base href="'+new URL('../',location.href)+'"><script>('+adapter.toString()+')()<\/script>');
+};
+document.getElementById('photo').onclick=()=>frame.contentWindow.eval("startModal.style.display='none'; arContainer.style.display='none'; openPhotoScreen()");
+document.getElementById('ar').onclick=()=>frame.contentWindow.eval('if (!window.testHooked) { window.testHooked=true; const loop=RosaAR.prototype.loop; RosaAR.prototype.loop=function(now){window.testAR=this;return loop.call(this,now)}; } document.getElementById("start-modal").style.display="none"; media.startAR()');
+document.getElementById('deny').onclick=()=>frame.contentWindow.testCapture.deny=true;
+document.getElementById('missing').onclick=()=>frame.contentWindow.testCapture.missing=true;
+document.getElementById('blank').onclick=()=>frame.contentWindow.testCapture.blank=!frame.contentWindow.testCapture.blank;
+document.getElementById('report').onclick=()=>{
+ const w=frame.contentWindow,d=w.document;
+ const result={...w.testCapture,status:d.getElementById('media-status').textContent,shutterDisabled:d.getElementById('shutter-btn').disabled,
+   mirror:d.getElementById('camera-feed').style.transform,photoWidth:d.getElementById('photo-canvas').width,photoHeight:d.getElementById('photo-canvas').height};
+ try{Object.assign(result,w.eval('({phase:currentPhase,ar:window.testAR ? {running:testAR.running,found:testAR.marker.visible,petals:testAR.particles.length} : null})'))}catch{}
+ document.getElementById('report-text').textContent=JSON.stringify(result,null,2);
+};
+
+const waitFor=async check=>{for(let i=0;i<150;i++){if(check())return;await new Promise(r=>setTimeout(r,100))}throw Error('Timed out')};
+const output=document.getElementById('report-text');
+function assert(ok,text){if(!ok)throw Error(text);output.textContent+='PASS '+text+'\n'}
+document.getElementById('run-photo').onclick=async()=>{
+ output.textContent='';const w=frame.contentWindow,d=w.document;
+ try{
+ document.getElementById('photo').click();await waitFor(()=>!d.getElementById('shutter-btn').disabled);
+ assert(w.testCapture.active===1,'one camera stream');
+ d.getElementById('shutter-btn').click();await waitFor(()=>d.getElementById('preview-modal').style.display==='flex');
+ assert(d.getElementById('photo-canvas').width===1027&&d.getElementById('photo-canvas').height===1180,'PNG dimensions');
+ assert(d.getElementById('captured-image').src.startsWith('blob:'),'PNG preview created');
+ d.getElementById('close-preview-btn').click();d.getElementById('switch-camera-btn').click();
+ await waitFor(()=>!d.getElementById('shutter-btn').disabled);
+ assert(d.getElementById('camera-feed').style.transform==='none','rear camera not mirrored');
+ assert(w.testCapture.active===1,'old stream released on switch');
+ w.testCapture.missing=true;d.getElementById('switch-camera-btn').click();await waitFor(()=>!d.getElementById('shutter-btn').disabled);
+ assert(d.getElementById('media-status').textContent.includes('元のカメラ'),'missing camera recovers');
+ w.testCapture.deny=true;d.getElementById('retry-camera-btn').click();await waitFor(()=>d.getElementById('media-status').textContent.includes('許可'));
+ assert(d.getElementById('shutter-btn').disabled&&w.testCapture.active===0,'denial disables shutter and releases stream');
+ d.getElementById('retry-camera-btn').click();await waitFor(()=>!d.getElementById('shutter-btn').disabled);
+ assert(w.testCapture.active===1,'retry recovers');
+ d.getElementById('finish-photo-btn').click();assert(w.testCapture.active===0,'finish releases camera');
+ output.textContent+='PHOTO TESTS COMPLETE';
+ }catch(e){output.textContent+='FAIL '+e.message}
+};
+document.getElementById('run-ar').onclick=async()=>{
+ output.textContent='';const w=frame.contentWindow,d=w.document;
+ try{
+ document.getElementById('ar').click();await waitFor(()=>w.testAR?.marker.visible&&w.testAR.particles.length>0);
+ assert(w.testAR.marker.visible,'real Hiro image detected');assert(w.testAR.particles.length<=48,'bounded petal count');
+ w.testCapture.blank=true;await waitFor(()=>!w.testAR.marker.visible&&w.testAR.particles.length===0);
+ assert(true,'marker loss clears petals');w.testCapture.blank=false;
+ await waitFor(()=>w.testAR.marker.visible&&w.testAR.particles.length>0);assert(true,'reacquisition replays');
+ document.getElementById('photo').click();await waitFor(()=>!d.getElementById('shutter-btn').disabled);
+ assert(!w.testAR.running&&w.testAR.particles.length===0,'photo transition stops AR');
+ assert(w.testCapture.active===1,'AR camera released before photo');
+ output.textContent+='AR TESTS COMPLETE';
+ }catch(e){output.textContent+='FAIL '+e.message+' '+d.getElementById('media-status').textContent}
+};
+
+document.getElementById('run-game').onclick=async()=>{
+ output.textContent='';const w=frame.contentWindow,d=w.document;
+ try{
+ d.getElementById('start-btn').click();await waitFor(()=>d.getElementById('start-modal').style.display==='none');
+ assert(!!d.getElementById('rosa-model').getObject3D('mesh'),'GLB loaded');
+ d.getElementById('dialog-btn').click();assert(d.getElementById('dialog-btn').textContent==='探しに行く','manual dialogue advance');
+ d.getElementById('dialog-btn').click();assert(w.eval('currentPhase')===1,'phase 1 starts');
+ d.getElementById('rosa-model').dispatchEvent(new Event('click'));await waitFor(()=>w.eval('currentPhase')===2);
+ assert(d.getElementById('dialog-container').style.display==='none','old dialogue cleared in phase 2');
+ d.getElementById('rosa-model').dispatchEvent(new Event('click'));await waitFor(()=>w.eval('currentPhase')===3);
+ assert(d.getElementById('dialog-container').style.display==='none','old dialogue cleared in phase 3');
+ d.getElementById('rosa-model').dispatchEvent(new Event('click'));await waitFor(()=>w.eval('currentPhase')===4);
+ await waitFor(()=>!d.getElementById('shutter-btn').disabled);
+ assert(!d.querySelector('a-scene').isPlaying,'3D paused in photo screen');
+ assert(d.getElementById('score-badge').textContent==='3/3','three discoveries complete');
+ output.textContent+='GAME TESTS COMPLETE (click events; physical raycast not tested)';
+ }catch(e){output.textContent+='FAIL '+e.message}
+};
+</script></html>
