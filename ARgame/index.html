@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARで公園イベント - バラの妖精ローザのかくれんぼ</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- A-Frame (v1.4.2) -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+
+  <script src="camera.js"></script>
+  <script src="ar-effects.js"></script>
+
+  <!-- unlit-model（ライティング不使用）コンポーネント定義 -->
+  <!-- unlit-model（ライティング不使用＋明るさ底上げ）コンポーネント定義 -->
+  <script>
+    AFRAME.registerComponent('unlit-model', {
+      init: function () {
+        this.el.addEventListener('model-loaded', () => {
+          const mesh = this.el.getObject3D('mesh');
+          if (mesh) {
+            mesh.traverse((node) => {
+              if (node.isMesh && node.material) {
+                const oldMat = node.material;
+                
+                // 元の色情報を複製
+                const baseColor = oldMat.color ? oldMat.color.clone() : new THREE.Color(0xffffff);
+                
+                // ★ 明度（明るさ）の倍率設定（1.0 = 標準, 1.3〜1.6 = 明るく）
+                const brightnessFactor = 1.5; 
+                baseColor.multiplyScalar(brightnessFactor);
+
+                node.material = new THREE.MeshBasicMaterial({
+                  map: oldMat.map || null,
+                  color: baseColor,
+                  transparent: oldMat.transparent || false,
+                  opacity: oldMat.opacity !== undefined ? oldMat.opacity : 1.0,
+                  alphaTest: oldMat.alphaTest || 0
+                });
+                node.material.needsUpdate = true;
+              }
+            });
+          }
+        });
+      }
+    });
+  </script>
+
+  <style>
+    /* 全体レイアウト・リセット */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'BIZ UDPGothic', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      background-color: #fff;
+    }
+
+    /* 3Dキャンバスコンテナ */
+    #ar-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* タップ波紋エフェクト */
+    .tap-ripple {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border: 3px solid #ff4d88;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0.5);
+      animation: ripple-anim 0.6s ease-out forwards;
+      z-index: 999;
+    }
+    @keyframes ripple-anim {
+      0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(2.5);
+        opacity: 0;
+      }
+    }
+
+    /* 右上スコアカウンター */
+    #score-badge {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(4px);
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-size: 1.25rem;
+      font-weight: bold;
+      color: #d63384;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: none;
+    }
+
+    /* 下部会話ダイアログ */
+    #dialog-container {
+      position: absolute;
+      bottom: 24px;
+      left: 5%;
+      width: 90%;
+      max-width: 480px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.95);
+      border: 2px solid #f8d7da;
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      display: none;
+      animation: fadeInUp 0.4s ease;
+    }
+    @keyframes fadeInUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    #dialog-text {
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: #333;
+      margin-bottom: 12px;
+      min-height: 48px;
+    }
+
+    /* 丸みのあるピンクボタン共通 */
+    .btn-fairy {
+      background: linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%);
+      color: #fff;
+      border: none;
+      border-radius: 25px;
+      padding: 10px 24px;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(255, 117, 140, 0.4);
+      transition: all 0.2s ease;
+    }
+    .btn-fairy:active {
+      transform: scale(0.95);
+    }
+
+    /* スタートウェルカムモーダル */
+    #start-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .start-card {
+      background: #fff;
+      border-radius: 24px;
+      padding: 28px 24px;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    }
+    .start-card h2 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #d63384;
+      margin-bottom: 16px;
+    }
+    .start-card p {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: #555;
+      margin-bottom: 24px;
+    }
+
+    /* フォトフレーム画面 */
+    #photo-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 50;
+      background: #fff;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .camera-wrapper {
+      position: relative;
+      width: 100%;
+      height: calc(100% - 100px);
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #camera-feed {
+      position: absolute;
+      min-width: 100%;
+      min-height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* インカメラのミラー反転 */
+    }
+    #frame-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+    }
+    .shutter-panel {
+      height: 100px;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .btn-shutter {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 4px solid #fff;
+      background: #ff4d88;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+
+    /* 写真プレビューモーダル */
+    #preview-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #captured-image {
+      max-width: 85%;
+      max-height: 70%;
+      border-radius: 12px;
+      border: 2px solid #fff;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      margin-bottom: 16px;
+    }
+    .save-notice {
+      color: #fff;
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    [hidden] { display: none !important; }
+    button:disabled { opacity: .5; cursor: wait; }
+    #game-camera { position: fixed; inset: 0; overflow: hidden; z-index: 0; }
+    #game-feed { width: 100%; height: 100%; object-fit: cover; }
+    #marker-canvas { position: fixed; pointer-events: none; z-index: 2; }
+    #ar-toggle { position: fixed; top: 16px; left: 12px; z-index: 20; }
+    #media-status, #model-status { position: fixed; top: 72px; left: 5%; width: 90%; z-index: 210; background: #fff4f7; color: #74213f; padding: 8px; }
+    #model-status { top: 120px; z-index: 101; }
+    #media-status:empty, #model-status:empty { display: none; }
+    #photo-area { flex: 1; min-height: 0; height: auto; }
+    #photo-stage { position: relative; overflow: hidden; background: #29232a; }
+    #camera-feed { inset: 0; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+    #frame-overlay { object-fit: fill; }
+    #switch-camera-btn { position: absolute; top: 12px; right: 12px; }
+    .shutter-panel { flex-shrink: 0; gap: 12px; }
+    .shutter-panel .btn-fairy { padding: 10px 12px; font-size: .85rem; }
+    #end-screen { position: fixed; inset: 0; z-index: 100; background: white; text-align: center; padding-top: 35vh; }
+    #save-photo { margin-bottom: 12px; }
+    #captured-image { user-select: auto; -webkit-user-select: auto; }
+  </style>
+</head>
+
+<body>
+  <div id="game-camera" hidden><video id="game-feed" autoplay muted playsinline></video></div>
+  <canvas id="marker-canvas" aria-hidden="true"></canvas>
+  <button id="ar-toggle" class="btn-fairy" hidden>ARを開始</button>
+  <div id="media-status" role="status" aria-live="polite"></div>
+  <div id="model-status" role="status"></div>
+  <div id="end-screen" hidden><p>撮影を終了しました。</p><button id="restart-btn" class="btn-fairy">もう一度遊ぶ</button></div>
+  <!-- タップ波紋発生用コンテナ -->
+  <div id="ripple-layer"></div>
+
+  <!-- 右上 スコア -->
+  <div id="score-badge">0/3</div>
+
+  <!-- 下部 ダイアログ -->
+  <div id="dialog-container">
+    <div id="dialog-text"></div>
+    <div class="text-end">
+      <button id="dialog-btn" class="btn btn-fairy btn-sm">タップして進む</button>
+    </div>
+  </div>
+
+  <!-- 0. スタートモーダル -->
+  <div id="start-modal">
+    <div class="start-card">
+      <h2>ウツボ公園へ ようこそ！</h2>
+      <p>
+        街のまん中にあるこの公園には、千株もの美しいバラを守る『バラの妖精族 ロサ』が住んでいます。<br/>
+        魔法のレンズを手に入れたあなたは、妖精ローザに話しかけられます。
+      </p>
+      <button id="start-btn" class="btn-fairy px-5 py-2">tap</button>
+    </div>
+  </div>
+
+  <!-- A-Frame 3D空間 -->
+  <div id="ar-container">
+    <a-scene embedded vr-mode-ui="enabled: false" cursor="rayOrigin: mouse" raycaster="objects: .clickable" renderer="colorManagement: true; exposure: 1.0;">
+      <!-- カメラ: PCマウス操作(look-controls)を標準有効化 -->
+      <a-entity id="main-camera" camera look-controls="pointerLockEnabled: false" position="0 1.6 0"></a-entity>
+
+      <a-assets>
+        <a-asset-item id="fairy-glb" src="roza.glb"></a-asset-item>
+      </a-assets>
+
+      <!-- 妖精ローザのラッパーエンティティ -->
+      <a-entity id="rosa-wrapper" position="0 1.5 -2.5">
+        <!-- 3Dモデル/図形本体（Raycastターゲット・ライティング無効化） -->
+        <a-entity id="rosa-model" class="clickable" unlit-model></a-entity>
+      </a-entity>
+      
+    </a-scene>
+  </div>
+
+  <!-- 3. フォトフレーム画面 -->
+  <div id="photo-screen">
+    <div class="camera-wrapper" id="photo-area"><div id="photo-stage">
+      <video id="camera-feed" autoplay playsinline muted></video>
+      <img id="frame-overlay" src="frame.png" alt="バラのフォトフレーム" />
+    </div></div>
+    <button id="switch-camera-btn" class="btn-fairy">アウトカメラへ</button>
+    <div class="shutter-panel">
+      <button id="retry-camera-btn" class="btn-fairy">再試行</button>
+      <button id="shutter-btn" class="btn-shutter" aria-label="写真を撮る" disabled></button>
+      <button id="finish-photo-btn" class="btn-fairy">撮影を終了</button>
+    </div>
+  </div>
+
+  <!-- 撮影プレビューモーダル -->
+  <div id="preview-modal">
+    <img id="captured-image" alt="Captured Photo" />
+    <div class="save-notice">✨ 写真を長押し（PCは右クリック）して保存してね！</div>
+    <a id="save-photo" download="rosa-photo.png" class="btn-fairy">写真を保存</a>
+    <button id="close-preview-btn" class="btn btn-outline-light rounded-pill px-4">もどる</button>
+  </div>
+
+  <!-- 写真合成用Canvas（非表示） -->
+  <canvas id="photo-canvas" style="display: none;"></canvas>
+
+  <script>
+    /* ============================================================
+     * 設定・定数フラグ
+     * ============================================================ */
+    const BASE_SCALE = 2.0;
+
+    // 外部GLBモデルを読み込むか、A-Frame標準図形を使用するかの切替フラグ
+    const USE_GLB_MODEL = true;
+
+    // ゲーム進行状態
+    let currentPhase = 0; // 0: プロローグ前, 1~3: 各フェーズ, 4: フォト
+    let isTransitioning = false;
+
+    // DOM要素参照
+    const startModal = document.getElementById('start-modal');
+    const startBtn = document.getElementById('start-btn');
+    const dialogContainer = document.getElementById('dialog-container');
+    const dialogText = document.getElementById('dialog-text');
+    const dialogBtn = document.getElementById('dialog-btn');
+    const scoreBadge = document.getElementById('score-badge');
+    const rosaWrapper = document.getElementById('rosa-wrapper');
+    const rosaModel = document.getElementById('rosa-model');
+    const arContainer = document.getElementById('ar-container');
+    const photoScreen = document.getElementById('photo-screen');
+    const cameraFeed = document.getElementById('camera-feed');
+    const shutterBtn = document.getElementById('shutter-btn');
+    const previewModal = document.getElementById('preview-modal');
+    const capturedImage = document.getElementById('captured-image');
+    const closePreviewBtn = document.getElementById('close-preview-btn');
+    const photoCanvas = document.getElementById('photo-canvas');
+    const frameOverlay = document.getElementById('frame-overlay');
+
+    /* ============================================================
+     * 3Dモデル・フォールバック生成
+     * ============================================================ */
+    async function initRosaCharacter() {
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+
+      if (!USE_GLB_MODEL) { buildFallbackShape(); return; }
+      await new Promise(resolve => {
+        let finished = false;
+        const finish = failed => {
+          if (finished) return; finished = true; clearTimeout(timer);
+          rosaModel.removeEventListener('model-loaded', loaded);
+          rosaModel.removeEventListener('model-error', failedLoad);
+          if (failed) {
+            document.getElementById('model-status').textContent = 'ローザの読込に失敗したため、代わりのキャラクターで遊べます。';
+            buildFallbackShape();
+          }
+          resolve();
+        };
+        const loaded = () => finish(false), failedLoad = () => finish(true);
+        const timer = setTimeout(failedLoad, 20000);
+        rosaModel.addEventListener('model-loaded', loaded);
+        rosaModel.addEventListener('model-error', failedLoad);
+        rosaModel.setAttribute('gltf-model', 'roza.glb');
+      });
+    }
+
+    // A-Frame標準図形による代替キャラ生成
+    function buildFallbackShape() {
+      rosaModel.removeAttribute('gltf-model');
+      rosaModel.innerHTML = `
+        <a-sphere radius="0.25" color="#ffb6c1" position="0 0.35 0"></a-sphere>
+        <a-cylinder radius="0.18" height="0.4" color="#ff69b4" position="0 0 0"></a-cylinder>
+        <a-cone radius-bottom="0.08" radius-top="0" height="0.2" color="#ffff99" position="-0.15 0.3 0" rotation="0 0 45"></a-cone>
+        <a-cone radius-bottom="0.08" radius-top="0" height="0.2" color="#ffff99" position="0.15 0.3 0" rotation="0 0 -45"></a-cone>
+      `;
+    }
+
+    /* ============================================================
+     * GLBメッシュ透明度トラバース処理
+     * ============================================================ */
+    function setGLBModelOpacity(entityEl, opacity) {
+      const mesh = entityEl.getObject3D('mesh');
+      if (mesh) {
+        mesh.traverse((node) => {
+          if (node.isMesh && node.material) {
+            node.material.transparent = opacity < 1.0;
+            node.material.opacity = opacity;
+            node.material.needsUpdate = true;
+          }
+        });
+      }
+      // 標準図形配下のマテリアルにも念のため同期
+      const children = entityEl.querySelectorAll('a-sphere, a-cylinder, a-cone');
+      children.forEach((el) => {
+        el.setAttribute('material', `opacity: ${opacity}; transparent: true`);
+      });
+    }
+
+    /* ============================================================
+     * 上下揺れアニメーションの制御
+     * ============================================================ */
+    function startBobbing() {
+      rosaModel.setAttribute('animation__bobbing', {
+        property: 'position',
+        dir: 'alternate',
+        dur: 1500,
+        easing: 'easeInOutSine',
+        loop: true,
+        to: '0 0.15 0'
+      });
+    }
+
+    function stopBobbing() {
+      rosaModel.removeAttribute('animation__bobbing');
+      rosaModel.setAttribute('position', '0 0 0');
+    }
+
+    /* ============================================================
+     * タップ波紋エフェクト（全画面）
+     * ============================================================ */
+    window.addEventListener('pointerdown', (e) => {
+      const ripple = document.createElement('div');
+      ripple.className = 'tap-ripple';
+      ripple.style.left = `${e.clientX}px`;
+      ripple.style.top = `${e.clientY}px`;
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 600);
+    });
+
+    /* ============================================================
+     * 会話・ゲーム進行フロー
+     * ============================================================ */
+    // 0. スタートボタン押下
+    startBtn.addEventListener('click', async () => {
+      if (!window.AFRAME) { document.getElementById('model-status').textContent = 'ライブラリを読み込めません。ネット接続を確認してください。'; return; }
+      startBtn.disabled = true; startBtn.textContent = 'ローザを準備しています…';
+      await initRosaCharacter();
+      startModal.style.display = 'none';
+      document.getElementById('ar-toggle').hidden = false;
+      startPrologue();
+    });
+
+    // 1. プロローグ開始
+    function startPrologue() {
+      startBobbing();
+      dialogContainer.style.display = 'block';
+      dialogText.textContent = '「もしかして、わたしがみえるのー？」';
+      dialogBtn.style.display = 'inline-block';
+
+      dialogBtn.onclick = () => {
+        dialogBtn.style.display = 'none';
+        dialogText.textContent = '「私がみえるの！？せっかくだし少し遊ぼうよ！画面をドラッグして、隠れた私をタップしてね。ARを開始すると、マーカーから花びらが舞うよ！」';
+        
+        // 説明は読み終えてから進める
+        dialogBtn.textContent = '探しに行く'; dialogBtn.style.display = 'inline-block';
+        dialogBtn.onclick = () => {
+          dialogContainer.style.display = 'none';
+          scoreBadge.style.display = 'block';
+          scoreBadge.textContent = '0/3';
+          startPhase1();
+        };
+      };
+    }
+
+    // フェーズ1：背中を向けて隠れる
+    function startPhase1() {
+      currentPhase = 1;
+      isTransitioning = false;
+      stopBobbing();
+
+      // (random, 0, random) の配置
+      const randomX = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 1.0);
+      const randomZ = -(1.5 + Math.random() * 1.5);
+      rosaWrapper.setAttribute('position', `${randomX.toFixed(2)} 0 ${randomZ.toFixed(2)}`);
+      rosaWrapper.setAttribute('rotation', '0 180 0');
+      rosaModel.setAttribute('scale', `${BASE_SCALE} ${BASE_SCALE} ${BASE_SCALE}`);
+      setGLBModelOpacity(rosaModel, 1.0);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    // フェーズ2：高所に縮小して出現
+    function startPhase2() {
+      dialogContainer.style.display = 'none';
+      currentPhase = 2;
+      isTransitioning = false;
+      stopBobbing();
+
+      rosaWrapper.setAttribute('position', '2.5 2.5 -2');
+      rosaWrapper.setAttribute('rotation', '0 -40 0');
+      
+      const smallScale = BASE_SCALE * 0.4;
+      rosaModel.setAttribute('scale', `${smallScale} ${smallScale} ${smallScale}`);
+      setGLBModelOpacity(rosaModel, 1.0);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    // フェーズ3：透明度低下
+    function startPhase3() {
+      dialogContainer.style.display = 'none';
+      currentPhase = 3;
+      isTransitioning = false;
+      stopBobbing();
+
+      const randomX = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 1.0);
+      const randomZ = -(1.5 + Math.random() * 1.5);
+      rosaWrapper.setAttribute('position', `${randomX.toFixed(2)} 0 ${randomZ.toFixed(2)}`);
+      rosaWrapper.setAttribute('rotation', '0 20 0');
+      const smallScale2 = BASE_SCALE * 0.6;
+      rosaModel.setAttribute('scale', `${smallScale2} ${smallScale2} ${smallScale2}`);
+      setGLBModelOpacity(rosaModel, 0.35);
+      rosaWrapper.setAttribute('visible', true);
+    }
+
+    /* ============================================================
+     * 3Dモデルのクリック / タップ判定
+     * ============================================================ */
+    rosaModel.addEventListener('click', () => {
+      if (isTransitioning) return;
+
+      if (currentPhase === 1) {
+        isTransitioning = true;
+        showDialogTemporary('「きゃっ！見つかっちゃった！でもまだまだだ～！」');
+
+        // クルッと1回転して消失
+        rosaWrapper.setAttribute('animation__spin', {
+          property: 'rotation',
+          to: '0 540 0',
+          dur: 800,
+          easing: 'easeInOutQuad'
+        });
+
+        setTimeout(() => {
+          rosaWrapper.removeAttribute('animation__spin');
+          rosaWrapper.setAttribute('visible', false);
+          scoreBadge.textContent = '1/3';
+        }, 800);
+
+        setTimeout(() => {
+          startPhase2();
+        }, 3000);
+
+      } else if (currentPhase === 2) {
+        isTransitioning = true;
+        showDialogTemporary('「あれれ、すごいじゃん！でも次は絶対無理だよ！」');
+
+        // 発光・フェードアウト演出（透明度を段階的に下げる）
+        let fadeCount = 10;
+        const fadeInterval = setInterval(() => {
+          fadeCount--;
+          setGLBModelOpacity(rosaModel, fadeCount / 10);
+          if (fadeCount <= 0) {
+            clearInterval(fadeInterval);
+            rosaWrapper.setAttribute('visible', false);
+            scoreBadge.textContent = '2/3';
+          }
+        }, 60);
+
+        setTimeout(() => {
+          startPhase3();
+        }, 3000);
+
+      } else if (currentPhase === 3) {
+        isTransitioning = true;
+        scoreBadge.textContent = '3/3';
+        setGLBModelOpacity(rosaModel, 1.0); // 姿をはっきり戻す
+        startBobbing(); // 歓喜の揺れアニメーション再開
+
+        showDialogTemporary('「降参～！君すごいね！見つかっちゃったなー、でもとってもたのしかったから、特別なプレゼント！記念写真を撮ろー！」');
+
+        // 3.5秒後にフォトフレーム画面へ遷移
+        setTimeout(() => {
+          dialogContainer.style.display = 'none';
+          scoreBadge.style.display = 'none';
+          arContainer.style.display = 'none';
+          openPhotoScreen();
+        }, 3500);
+      }
+    });
+
+    function showDialogTemporary(text) {
+      dialogText.textContent = text;
+      dialogBtn.style.display = 'none';
+      dialogContainer.style.display = 'block';
+    }
+
+    /* ============================================================
+     * 3. フォトフレーム画面（インカメラ起動 & 撮影合成）
+     * ============================================================ */
+    async function openPhotoScreen() {
+      currentPhase = 4; stopBobbing(); await media.openPhoto();
+    }
+  </script>
+  <script src="media.js"></script>
+</body>
+</html>
