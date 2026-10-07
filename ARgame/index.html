@@ -342,7 +342,7 @@
       </a-assets>
 
       <!-- 妖精ローザのラッパーエンティティ -->
-      <a-entity id="rosa-wrapper" position="0 1.5 -2.5">
+      <a-entity id="rosa-wrapper" position="0 0.5 -2.5">
         <!-- 3Dモデル/図形本体（Raycastターゲット・ライティング無効化） -->
         <a-entity id="rosa-model" class="clickable" unlit-model></a-entity>
       </a-entity>
@@ -438,7 +438,7 @@
     function buildFallbackShape() {
       rosaModel.removeAttribute('gltf-model');
       rosaModel.innerHTML = `
-        <a-sphere radius="0.25" color="#ffb6c1" position="0 0.35 0"></a-sphere>
+        <a-sphere radius="0.05" color="#ffb6c1" position="0 0.35 0"></a-sphere>
         <a-cylinder radius="0.18" height="0.4" color="#ff69b4" position="0 0 0"></a-cylinder>
         <a-cone radius-bottom="0.08" radius-top="0" height="0.2" color="#ffff99" position="-0.15 0.3 0" rotation="0 0 45"></a-cone>
         <a-cone radius-bottom="0.08" radius-top="0" height="0.2" color="#ffff99" position="0.15 0.3 0" rotation="0 0 -45"></a-cone>
