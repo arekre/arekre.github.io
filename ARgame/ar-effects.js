@@ -8,7 +8,7 @@ class RosaAR {
     this.anchor = new THREE.Group(); this.anchor.matrixAutoUpdate = false; this.scene.add(this.anchor);
     this.marker = new THREE.Group(); this.marker.rotation.x = Math.PI / 2;
     this.marker.visible = false; this.anchor.add(this.marker);
-    this.input = document.createElement('canvas'); this.input.width = 640; this.input.height = 480;
+    this.input = document.createElement('canvas'); this.input.width = 720; this.input.height = 1280;
     this.inputContext = this.input.getContext('2d');
     this.pending = Promise.resolve(); this.detectedFrames = 0; this.missedFrames = 0;
     this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
