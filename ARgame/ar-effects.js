@@ -57,7 +57,7 @@ class RosaAR {
       new THREE.Vector3(width / 2, height / 2, 0), new THREE.Quaternion(), new THREE.Vector3(width, width, width));
     this.camera.projectionMatrix.fromArray(this.controller.getProjectionMatrix());
     this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
-    this.inputContext.drawImage(this.video, 0, 0, 640, 480);
+    this.inputContext.drawImage(this.video, 0, 0, 720, 1280);
     this.controller.dummyRun(this.input);
   }
   trackFrame(generation) {
@@ -65,7 +65,7 @@ class RosaAR {
     // Serialize detect/match/track: no outstanding worker result can revive a stopped AR session.
     this.pending = (async () => {
       if (this.video.readyState < 2) return;
-      this.inputContext.drawImage(this.video, 0, 0, 640, 480);
+      this.inputContext.drawImage(this.video, 0, 0, 720, 1280);
       let transform = this.transform;
       if (transform) {
         const features = await this.controller.track(this.input, transform, AR_CONFIG.targetIndex);
@@ -124,7 +124,7 @@ class RosaAR {
       const vw = this.video.videoWidth, vh = this.video.videoHeight;
       const scale = Math.max(innerWidth/vw, innerHeight/vh);
       const width = vw*scale, height = vh*scale;
-      if (this.canvas.width !== 640) this.renderer.setSize(640, 480, false);
+      if (this.canvas.width !== 720) this.renderer.setSize(720, 1280, false);
       this.canvas.style.width = `${width}px`; this.canvas.style.height = `${height}px`;
       this.canvas.style.left = `${(innerWidth-width)/2}px`; this.canvas.style.top = `${(innerHeight-height)/2}px`;
       this.renderer.render(this.scene, this.camera);
