@@ -91,7 +91,7 @@ const media = (() => {
       if (!ar) ar = new RosaAR(game, $('marker-canvas'));
       await ar.start();
       if (ticket !== operation) return;
-      message(''); $('ar-toggle').textContent = 'ARを停止《マーカーをかざすとから花びらが舞うよ！》';
+      message(''); $('ar-toggle').textContent = 'ARを停止《花びらが舞うよ！》';
     } catch (error) {
       if (ticket === operation) { stopCapture(); mode = 'idle'; $('game-camera').hidden = true; message(RosaCamera.cameraError(error)); }
     } finally { if (mode !== 'photo') { busy = false; $('ar-toggle').disabled = false; } }
