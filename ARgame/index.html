@@ -511,7 +511,7 @@
     // 0. スタートボタン押下
     startBtn.addEventListener('click', async () => {
       if (!window.AFRAME) { document.getElementById('model-status').textContent = 'ライブラリを読み込めません。ネット接続を確認してください。'; return; }
-      startBtn.disabled = true; startBtn.textContent = 'ローザを準備しています…';
+      startBtn.disabled = true; startBtn.textContent = '魔法で探しています…';
       await initRosaCharacter();
       startModal.style.display = 'none';
       document.getElementById('ar-toggle').hidden = false;
